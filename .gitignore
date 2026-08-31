@@ -1,0 +1,30 @@
+# dependencies
+node_modules/
+.pnpm-store/
+
+# next.js
+.next/
+out/
+
+# tests
+coverage/
+playwright-report/
+test-results/
+
+# local configuration
+.env
+.env.local
+.env.*.local
+
+# database and object storage volumes
+.data/
+
+# logs and editor files
+*.log
+.DS_Store
+.idea/
+.vscode/
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
