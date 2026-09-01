@@ -174,6 +174,7 @@ export function createPostgresJobWorkflowStore(db: AppDatabase): JobWorkflowStor
               occurredAt: interviews.occurredAt,
               reviewedAt: interviews.reviewedAt,
               transcriptText: interviews.transcriptText,
+              transcriptAssetId: interviews.transcriptAssetId,
             })
             .from(interviews)
             .innerJoin(jobTracks, eq(jobTracks.id, interviews.jobTrackId))
@@ -188,6 +189,7 @@ export function createPostgresJobWorkflowStore(db: AppDatabase): JobWorkflowStor
                 occurredAt: row.occurredAt?.toISOString() ?? null,
                 reviewedAt: row.reviewedAt?.toISOString() ?? null,
                 transcriptText: row.transcriptText,
+                transcriptAssetId: row.transcriptAssetId,
               }
             : null;
         };
@@ -329,6 +331,11 @@ export function createPostgresJobWorkflowStore(db: AppDatabase): JobWorkflowStor
               .limit(1);
             return resume ?? null;
           },
+          async findAsset(userId, assetId) {
+            const [asset] = await databaseTransaction.select({ id: assets.id, userId: assets.userId, kind: assets.kind })
+              .from(assets).where(and(eq(assets.id, assetId), eq(assets.userId, userId))).limit(1);
+            return asset ?? null;
+          },
           async insertAssessmentWithTask(input) {
             const timing = input.assessment.timing;
             await databaseTransaction.insert(assessments).values({
@@ -407,6 +414,7 @@ export function createPostgresJobWorkflowStore(db: AppDatabase): JobWorkflowStor
               occurredAt: interview.occurredAt ? new Date(interview.occurredAt) : null,
               reviewedAt: interview.reviewedAt ? new Date(interview.reviewedAt) : null,
               transcriptText: interview.transcriptText,
+              transcriptAssetId: interview.transcriptAssetId,
             });
             return interview;
           },
@@ -481,6 +489,7 @@ export function createPostgresJobWorkflowStore(db: AppDatabase): JobWorkflowStor
             const savedAt = new Date(input.savedAt);
             await databaseTransaction.update(interviews).set({
               transcriptText: input.transcriptText,
+              transcriptAssetId: input.transcriptAssetId,
               occurredAt: new Date(input.occurredAt),
               updatedAt: savedAt,
               version: sql`${interviews.version} + 1`,

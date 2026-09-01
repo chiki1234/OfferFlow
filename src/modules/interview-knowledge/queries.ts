@@ -1,5 +1,5 @@
 import { and, asc, desc, eq, ilike, or, sql } from "drizzle-orm";
-import { experiences, faqs, interviews, jobTracks, resumeExperiences, resumes } from "@/db/schema";
+import { assets, experiences, faqs, interviews, jobTracks, resumeExperiences, resumes } from "@/db/schema";
 import { getDatabaseRuntime } from "@/db/runtime";
 import { normalizeFaqLibraryFilters } from "./faq-filters";
 
@@ -123,12 +123,16 @@ export async function getInterviewKnowledgeDetail(userId: string, interviewId: s
     occurredAt: interviews.occurredAt,
     reviewedAt: interviews.reviewedAt,
     transcriptText: interviews.transcriptText,
+    transcriptAssetId: interviews.transcriptAssetId,
+    transcriptAssetName: assets.originalName,
+    transcriptAssetMimeType: assets.mimeType,
     jobTrackId: jobTracks.id,
     companyName: jobTracks.companyName,
     roleName: jobTracks.roleName,
     resumeId: jobTracks.resumeId,
   }).from(interviews)
     .innerJoin(jobTracks, eq(jobTracks.id, interviews.jobTrackId))
+    .leftJoin(assets, eq(assets.id, interviews.transcriptAssetId))
     .where(and(eq(interviews.id, interviewId), eq(jobTracks.userId, userId))).limit(1);
   if (!interview) throw new Error("NOT_FOUND: interview was not found");
   const [faqRows, experienceRows] = await Promise.all([

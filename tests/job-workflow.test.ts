@@ -621,4 +621,18 @@ describe("JobWorkflow", () => {
     const saved = await workflow.execute({ type: "save_interview_transcript", idempotencyKey: "transcript-save", interviewId: scheduled.interview.id, transcriptText: "面试官：请介绍一下你的项目\n我：项目的核心目标是…", savedAt: "2026-09-13T04:00:00.000Z" }, { userId: "user-1" });
     expect(saved).toMatchObject({ outcome: "transcript_saved", interview: { id: scheduled.interview.id, occurredAt: "2026-09-13T04:00:00.000Z" }, occurredEvent: { kind: "InterviewOccurred", payload: { confirmedBy: "transcript" } } });
   });
+
+  it("面试转录也可以只保存私有文件", async () => {
+    const workflow = createInMemoryJobWorkflow({
+      resumes: [{ id: "resume-transcript-file", userId: "user-1" }],
+      assets: [{ id: "asset-transcript-file", userId: "user-1", kind: "transcript" }],
+    });
+    const created = await workflow.execute({ type: "create_job_track", idempotencyKey: "transcript-file-create", companyName: "米哈游", roleName: "AI 产品经理", jobDescription: { text: "智能内容产品" } }, { userId: "user-1" });
+    await workflow.execute({ type: "submit_application", idempotencyKey: "transcript-file-submit", jobTrackId: created.jobTrack.id, resumeId: "resume-transcript-file", submittedAt: "2026-09-01T16:00:00.000Z" }, { userId: "user-1" });
+    const scheduled = await workflow.execute({ type: "schedule_interview", idempotencyKey: "transcript-file-schedule", jobTrackId: created.jobTrack.id, roundLabel: "二面", interviewType: "视频面试", startAt: "2026-09-14T02:00:00.000Z", endAt: "2026-09-14T03:00:00.000Z", receivedAt: "2026-09-02T07:00:00.000Z" }, { userId: "user-1" });
+
+    const saved = await workflow.execute({ type: "save_interview_transcript", idempotencyKey: "transcript-file-save", interviewId: scheduled.interview.id, transcriptAssetId: "asset-transcript-file", savedAt: "2026-09-14T04:00:00.000Z" }, { userId: "user-1" });
+
+    expect(saved).toMatchObject({ outcome: "transcript_saved", interview: { transcriptText: null, transcriptAssetId: "asset-transcript-file", occurredAt: "2026-09-14T04:00:00.000Z" }, occurredEvent: { kind: "InterviewOccurred" } });
+  });
 });

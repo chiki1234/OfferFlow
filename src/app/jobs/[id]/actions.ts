@@ -6,6 +6,7 @@ import { z } from "zod";
 import { uploadJobDescriptionImages } from "@/modules/job-description-assets/service";
 import { getJobWorkflow } from "@/modules/job-workflow/composition";
 import { uploadResumeVersion } from "@/modules/resume-library/service";
+import { discardTranscriptAsset, stageTranscriptAsset, type StagedTranscriptAsset } from "@/modules/transcript-assets/service";
 import { getCurrentActor } from "@/shared/actor/current-actor";
 
 export type JobDetailActionState = { error: string | null; success: string | null };
@@ -151,13 +152,25 @@ export async function jobDetailAction(
       }
       case "save_interview_transcript": {
         const interviewId = z.uuid().parse(formData.get("interviewId"));
-        await workflow.execute({
-          type: "save_interview_transcript",
-          idempotencyKey: base.data.idempotencyKey,
-          interviewId,
-          transcriptText: z.string().trim().min(1).parse(formData.get("transcriptText")),
-          savedAt: new Date().toISOString(),
-        }, actor);
+        const transcriptText = z.string().trim().max(1000000).parse(formData.get("transcriptText") ?? "");
+        const transcriptFile = formData.get("transcriptFile");
+        const hasFile = transcriptFile instanceof File && transcriptFile.size > 0;
+        if (!transcriptText && !hasFile) return { error: "请粘贴转录文本或上传转录文件。", success: null };
+        let staged: StagedTranscriptAsset | null = null;
+        try {
+          if (hasFile) staged = await stageTranscriptAsset({ userId: actor.userId, interviewId, file: transcriptFile });
+          await workflow.execute({
+            type: "save_interview_transcript",
+            idempotencyKey: base.data.idempotencyKey,
+            interviewId,
+            transcriptText: transcriptText || undefined,
+            transcriptAssetId: staged?.id,
+            savedAt: new Date().toISOString(),
+          }, actor);
+        } catch (error) {
+          await discardTranscriptAsset(actor.userId, staged).catch(() => undefined);
+          throw error;
+        }
         revalidateWorkspace(base.data.jobTrackId);
         revalidatePath(`/interviews/${interviewId}`);
         return { error: null, success: "面试转录已保存。" };

@@ -165,12 +165,17 @@ async function executeSaveInterviewTranscript(
   const existing = await transaction.findInterview(context.userId, command.interviewId);
   if (!existing) throw new Error("NOT_FOUND: interview was not found");
   if (existing.status === "cancelled") throw new Error("CONFLICT: cancelled interview cannot receive a transcript");
-  const transcriptText = command.transcriptText.trim();
-  if (!transcriptText) throw new Error("VALIDATION_ERROR: transcript text is required");
+  const transcriptText = command.transcriptText === undefined ? existing.transcriptText : command.transcriptText.trim() || null;
+  const transcriptAssetId = command.transcriptAssetId ?? existing.transcriptAssetId;
+  if (!transcriptText && !transcriptAssetId) throw new Error("VALIDATION_ERROR: transcript text or file is required");
+  if (transcriptAssetId) {
+    const asset = await transaction.findAsset(context.userId, transcriptAssetId);
+    if (!asset || asset.kind !== "transcript") throw new Error("NOT_FOUND: transcript asset was not found");
+  }
   const savedAt = parseTimestamp(command.savedAt, "savedAt");
   const occurredAt = existing.occurredAt ?? savedAt;
   const interview = await transaction.saveInterviewTranscript({
-    userId: context.userId, interviewId: existing.id, transcriptText, occurredAt, savedAt,
+    userId: context.userId, interviewId: existing.id, transcriptText, transcriptAssetId, occurredAt, savedAt,
   });
   const occurredEvent = existing.occurredAt ? null : await transaction.insertEvent({
     id: generateId(), userId: context.userId, actionId: `${command.idempotencyKey}:occurred`,
@@ -578,6 +583,7 @@ async function executeScheduleInterview(
     occurredAt: null,
     reviewedAt: null,
     transcriptText: null,
+    transcriptAssetId: null,
   });
   const event = await transaction.insertEvent({
     id: generateId(),

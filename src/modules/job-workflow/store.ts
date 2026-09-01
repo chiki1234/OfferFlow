@@ -29,6 +29,8 @@ export type StoredResume = {
   userId: string;
 };
 
+export type StoredAsset = { id: string; userId: string; kind: "jd_image" | "resume" | "transcript" };
+
 export interface JobWorkflowTransaction {
   findReceipt(userId: string, idempotencyKey: string): Promise<JobCommandResult | null>;
   saveReceipt(input: {
@@ -49,6 +51,7 @@ export interface JobWorkflowTransaction {
   }): Promise<StoredJobTrack | null>;
   findJobTrack(userId: string, jobTrackId: string): Promise<StoredJobTrack | null>;
   findResume(userId: string, resumeId: string): Promise<StoredResume | null>;
+  findAsset(userId: string, assetId: string): Promise<StoredAsset | null>;
   insertAssessmentWithTask(input: {
     userId: string;
     assessment: AssessmentView;
@@ -95,7 +98,8 @@ export interface JobWorkflowTransaction {
   saveInterviewTranscript(input: {
     userId: string;
     interviewId: string;
-    transcriptText: string;
+    transcriptText: string | null;
+    transcriptAssetId: string | null;
     occurredAt: string;
     savedAt: string;
   }): Promise<InterviewView>;

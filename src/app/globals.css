@@ -611,6 +611,7 @@ a {
 .experience-card > span { float: right; color: var(--brand); font-size: 11px; font-weight: 750; }
 .experience-card p { display: -webkit-box; overflow: hidden; margin: 13px 0 0; color: var(--muted); font-size: 12px; line-height: 1.65; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
 .knowledge-tools { align-self: start; padding: 24px; }
+.transcript-file-link { display: block; margin-bottom: 18px; border-radius: 10px; background: #edf4ef; color: var(--brand); padding: 11px 12px; font-size: 11px; font-weight: 750; }
 .knowledge-form + .knowledge-form { margin-top: 24px; border-top: 1px solid var(--line); padding-top: 24px; }
 .knowledge-tools > .knowledge-form + .knowledge-form { margin-top: 24px; border-top: 1px solid var(--line); padding-top: 24px; }
 .knowledge-form h3 { margin: 0; font-size: 16px; }

@@ -112,7 +112,8 @@ export type SaveInterviewTranscriptCommand = {
   type: "save_interview_transcript";
   idempotencyKey: string;
   interviewId: string;
-  transcriptText: string;
+  transcriptText?: string;
+  transcriptAssetId?: string;
   savedAt: string;
 };
 
@@ -281,6 +282,7 @@ export type InterviewView = {
   occurredAt: string | null;
   reviewedAt: string | null;
   transcriptText: string | null;
+  transcriptAssetId: string | null;
 };
 
 export type CreateJobTrackResult = {

@@ -10,16 +10,19 @@ import type {
   JobWorkflowStore,
   JobWorkflowTransaction,
   StoredJobTrack,
+  StoredAsset,
   StoredResume,
 } from "./store";
 
 type InMemoryJobWorkflowOptions = {
   resumes?: StoredResume[];
+  assets?: StoredAsset[];
 };
 
 type MemoryState = {
   jobTracks: Map<string, StoredJobTrack>;
   resumes: Map<string, StoredResume>;
+  assets: Map<string, StoredAsset>;
   receipts: Map<string, JobCommandResult>;
   events: JobEventView[];
   assessments: Map<string, AssessmentView>;
@@ -39,6 +42,7 @@ function createInMemoryJobWorkflowStore(
   let state: MemoryState = {
     jobTracks: new Map(),
     resumes: new Map(options.resumes?.map((resume) => [resume.id, resume]) ?? []),
+    assets: new Map(options.assets?.map((asset) => [asset.id, asset]) ?? []),
     receipts: new Map(),
     events: [],
     assessments: new Map(),
@@ -51,6 +55,7 @@ function createInMemoryJobWorkflowStore(
       const working: MemoryState = {
         jobTracks: new Map(state.jobTracks),
         resumes: new Map(state.resumes),
+        assets: new Map(state.assets),
         receipts: new Map(state.receipts),
         events: [...state.events],
         assessments: new Map(state.assessments),
@@ -208,9 +213,13 @@ function createMemoryTransaction(state: MemoryState): JobWorkflowTransaction {
       const interview = state.interviews.get(input.interviewId);
       const jobTrack = interview ? state.jobTracks.get(interview.jobTrackId) : null;
       if (!interview || jobTrack?.userId !== input.userId) throw new Error("NOT_FOUND: interview was not found");
-      const saved = { ...interview, occurredAt: input.occurredAt, transcriptText: input.transcriptText };
+      const saved = { ...interview, occurredAt: input.occurredAt, transcriptText: input.transcriptText, transcriptAssetId: input.transcriptAssetId };
       state.interviews.set(saved.id, saved);
       return saved;
+    },
+    async findAsset(userId, assetId) {
+      const asset = state.assets.get(assetId);
+      return asset?.userId === userId ? asset : null;
     },
     async insertTask(input) {
       state.tasks.set(input.task.id, input.task);

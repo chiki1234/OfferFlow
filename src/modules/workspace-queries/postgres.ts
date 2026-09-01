@@ -102,6 +102,7 @@ function createLoaders(db: AppDatabase) {
         notes: interviews.notes,
         cancelledAt: interviews.cancelledAt,
         transcriptText: interviews.transcriptText,
+        transcriptAssetId: interviews.transcriptAssetId,
       }).from(interviews)
         .innerJoin(jobTracks, eq(jobTracks.id, interviews.jobTrackId))
         .where(eq(jobTracks.userId, userId));
@@ -220,6 +221,7 @@ async function readJobTrackDetail(
       occurredAt: row.occurredAt?.toISOString() ?? null,
       reviewedAt: row.reviewedAt?.toISOString() ?? null,
       transcriptText: row.transcriptText,
+      transcriptAssetId: row.transcriptAssetId,
     })),
     tasks: taskRows.map((row) => ({
       id: row.id,
