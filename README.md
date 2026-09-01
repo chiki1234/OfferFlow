@@ -61,6 +61,7 @@ pnpm test:integration # 需要已迁移的 PostgreSQL 与已创建 Bucket 的 Mi
 
 - [领域词汇](./CONTEXT.md)
 - [技术方案 V1](./docs/技术方案V1.md)
+- [一期验收清单](./docs/一期验收清单.md)
 - [架构决策](./docs/adr/)
 
 ## 当前开发顺序
