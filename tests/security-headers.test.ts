@@ -1,10 +1,12 @@
-import type { NextConfig } from "next";
+import { describe, expect, it } from "vitest";
+import nextConfig from "../next.config";
 
-const nextConfig: NextConfig = {
-  output: "standalone",
-  deploymentId: process.env.DEPLOYMENT_VERSION,
-  headers() {
-    return [
+describe("Next.js security headers", () => {
+  it("为所有应用路由设置浏览器安全基线", async () => {
+    expect(nextConfig.headers).toBeTypeOf("function");
+    const rules = await nextConfig.headers?.();
+
+    expect(rules).toEqual([
       {
         source: "/:path*",
         headers: [
@@ -14,13 +16,6 @@ const nextConfig: NextConfig = {
           { key: "X-Frame-Options", value: "DENY" },
         ],
       },
-    ];
-  },
-  experimental: {
-    serverActions: {
-      bodySizeLimit: "21mb",
-    },
-  },
-};
-
-export default nextConfig;
+    ]);
+  });
+});
