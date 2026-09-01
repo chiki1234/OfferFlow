@@ -25,6 +25,8 @@ jobs:
     env:
       DATABASE_URL: postgresql://job_hunting:job_hunting@localhost:5432/job_hunting
       APP_URL: http://localhost:3000
+      AUTH_MODE: local
+      ALLOW_LOCAL_AUTH_IN_PRODUCTION: "true"
       APP_USER_ID: 00000000-0000-4000-8000-000000000001
       NEXT_SERVER_ACTIONS_ENCRYPTION_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
       DEPLOYMENT_VERSION: ci-${{ github.sha }}

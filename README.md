@@ -43,6 +43,8 @@ Copy-Item .env.example .env.local
 
 服务就绪检查：<http://localhost:3000/api/health>。数据库和私有对象存储均可用时返回 `200`。
 
+当前认证入口是显式的本地单用户模式：`AUTH_MODE=local` 会把所有请求映射到 `APP_USER_ID`。开发环境可直接使用；生产环境默认拒绝启动业务请求，只有受信任、访问边界已由反向代理或内网控制的单用户部署，才可显式设置 `ALLOW_LOCAL_AUTH_IN_PRODUCTION=true`。公开部署前必须先接入真正的登录与会话方案，不能把这个开关当作登录功能。
+
 生产容器镜像可以用 `docker build -t job-hunting-web .` 构建；运行时需注入 `.env.example` 中列出的环境变量。正式的多实例镜像构建还应通过安全的 CI secret 向 Dockerfile 的同名 build args 注入 `NEXT_SERVER_ACTIONS_ENCRYPTION_KEY` 与 `DEPLOYMENT_VERSION`。
 
 自托管生产环境应在构建与运行阶段使用同一份 `NEXT_SERVER_ACTIONS_ENCRYPTION_KEY`，并为每次发布设置唯一 `DEPLOYMENT_VERSION`。前者避免多实例间 Server Action 无法解密，后者让滚动发布发生版本偏差时自动回退到完整页面导航。不要在生产环境沿用 `.env.example` 的示例密钥。
@@ -68,4 +70,4 @@ pnpm test:integration # 需要已迁移的 PostgreSQL 与已创建 Bucket 的 Mi
 
 1. Release A：投递、测评、面试、待办、Timeline、工作台与周日历。
 2. Release B：Experience、Resume 关联、FAQ Block 解析与知识库。
-3. 交互式认证、部署加固与数据导出。
+3. 选择并接入交互式认证方案；本地单用户模式和生产防误用边界已建立。
