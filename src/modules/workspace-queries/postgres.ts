@@ -1,6 +1,6 @@
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, sql } from "drizzle-orm";
 import type { AppDatabase } from "@/db/client";
-import { assessments, events, interviews, jobDescriptions, jobTracks, resumes, tasks } from "@/db/schema";
+import { assetLinks, assets, assessments, events, interviews, jobDescriptions, jobTracks, resumes, tasks } from "@/db/schema";
 import { deriveJobTrackStatus, type JobTrackFacts } from "./derive-job-track-status";
 import { markCalendarConflicts } from "./calendar-conflicts";
 import type {
@@ -132,7 +132,7 @@ async function readJobTrackDetail(
   userId: string,
   jobTrackId: string,
 ): Promise<JobTrackDetailView> {
-  const [job, assessmentRows, interviewRows, taskRows, eventRows, resumeRows] = await Promise.all([
+  const [job, assessmentRows, interviewRows, taskRows, eventRows, resumeRows, imageRows] = await Promise.all([
     db.select({
       id: jobTracks.id,
       companyName: jobTracks.companyName,
@@ -166,6 +166,13 @@ async function readJobTrackDetail(
       .orderBy(desc(events.occurredAt)),
     db.select({ id: resumes.id, name: resumes.name })
       .from(resumes).where(eq(resumes.userId, userId)).orderBy(desc(resumes.createdAt)),
+    db.select({ id: assets.id, originalName: assets.originalName, mimeType: assets.mimeType })
+      .from(assetLinks)
+      .innerJoin(assets, eq(assets.id, assetLinks.assetId))
+      .innerJoin(jobDescriptions, eq(jobDescriptions.id, assetLinks.ownerId))
+      .innerJoin(jobTracks, eq(jobTracks.id, jobDescriptions.jobTrackId))
+      .where(and(eq(assetLinks.ownerType, "job_description"), eq(jobTracks.id, jobTrackId), eq(jobTracks.userId, userId)))
+      .orderBy(asc(assetLinks.sortOrder)),
   ]);
   if (!job) throw new Error("NOT_FOUND: job track was not found");
   const status = deriveJobTrackStatus(buildJobTrackFacts(job, assessmentRows, interviewRows, taskRows), new Date());
@@ -177,7 +184,7 @@ async function readJobTrackDetail(
       roleName: job.roleName,
       lifecycle: job.lifecycle,
       submittedAt: job.submittedAt?.toISOString() ?? null,
-      hasJobDescription: Boolean(job.descriptionText),
+      hasJobDescription: Boolean(job.descriptionText || imageRows.length),
       hasResume: Boolean(job.resumeId),
       lastProgressAt: job.lastProgressAt?.toISOString() ?? null,
       actionState: status.actionState,
@@ -235,6 +242,7 @@ async function readJobTrackDetail(
       payload: row.payload,
     })),
     resumes: resumeRows,
+    jobDescriptionImages: imageRows,
   };
 }
 

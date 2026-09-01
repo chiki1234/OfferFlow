@@ -103,6 +103,7 @@ export type JobTrackDetailView = {
   tasks: TaskView[];
   events: JobEventView[];
   resumes: Array<{ id: string; name: string }>;
+  jobDescriptionImages: Array<{ id: string; originalName: string; mimeType: string }>;
 };
 
 export type WorkspaceView = JobTrackListView | DashboardView | CalendarWeekView | JobTrackDetailView;

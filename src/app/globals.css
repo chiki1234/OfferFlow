@@ -552,6 +552,10 @@ a {
 .detail-main, .detail-action-stack { display: grid; gap: 18px; }
 .detail-section { padding: 24px; }
 .jd-copy { margin: 22px 0 0; white-space: pre-wrap; color: #4e5c54; font-size: 13px; line-height: 1.8; }
+.jd-image-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 18px 0; }
+.jd-image-grid a { overflow: hidden; border: 1px solid var(--line); border-radius: 12px; background: #f6f8f5; }
+.jd-image-grid img { display: block; width: 100%; height: 180px; object-fit: cover; }
+.jd-image-grid span { display: block; overflow: hidden; padding: 9px 10px; color: var(--muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 .context-editor { margin-top: 20px; border-top: 1px solid var(--line); padding-top: 14px; }
 .context-editor summary { color: var(--brand); cursor: pointer; font-size: 11px; font-weight: 750; }
 .context-editor form { margin-top: 16px; }
@@ -584,6 +588,12 @@ a {
 .knowledge-main > .section-title-row { padding: 8px 2px 0; }
 .knowledge-main .section-title-row h2 { margin: 7px 0 0; color: var(--foreground); font-size: 21px; }
 .faq-card-list { display: grid; gap: 12px; margin-top: 18px; }
+.faq-filter-bar { display: grid; grid-template-columns: minmax(180px, 1fr) 140px 140px auto auto; align-items: end; gap: 10px; margin-top: 18px; padding: 14px; }
+.faq-filter-bar label { display: grid; gap: 6px; color: var(--muted); font-size: 10px; font-weight: 700; }
+.faq-filter-bar input, .faq-filter-bar select { min-width: 0; border: 1px solid var(--line); border-radius: 9px; background: #fff; padding: 10px 11px; color: var(--foreground); font: inherit; }
+.faq-filter-bar .primary-button { border: 0; cursor: pointer; }
+.filter-reset { align-self: center; color: var(--brand); font-size: 11px; font-weight: 750; }
+.filter-summary { margin: 12px 2px 0; color: var(--muted); font-size: 11px; }
 .faq-card { padding: 20px; }
 .faq-card-meta { display: flex; gap: 8px; }
 .faq-card-meta span { border-radius: 999px; background: #e9f2eb; color: var(--brand-dark); padding: 5px 8px; font-size: 10px; font-weight: 750; }
@@ -641,6 +651,8 @@ a {
   .jobs-layout { grid-template-columns: 1fr; }
   .detail-layout { grid-template-columns: 1fr; }
   .knowledge-layout { grid-template-columns: 1fr; }
+  .faq-filter-bar { grid-template-columns: 1fr 1fr; }
+  .faq-filter-bar label:first-child { grid-column: 1 / -1; }
   .detail-actions { position: static; order: -1; }
   .form-panel { order: -1; }
   .floating-add { right: 20px; bottom: 82px; }
@@ -676,6 +688,8 @@ a {
   .calendar-item { grid-template-columns: 1fr; gap: 12px; }
   .knowledge-stats { grid-template-columns: 1fr; }
   .experience-grid { grid-template-columns: 1fr; }
+  .faq-filter-bar { grid-template-columns: 1fr; }
+  .faq-filter-bar label:first-child { grid-column: auto; }
   .milestone-item { grid-template-columns: 1fr auto; }
   .inline-action-form { grid-column: 1 / -1; }
 }

@@ -26,6 +26,19 @@ describe("JobWorkflow", () => {
     });
   });
 
+  it("只上传 JD 图片也可以创建待投递岗位", async () => {
+    const workflow = createInMemoryJobWorkflow();
+    const created = await workflow.execute({
+      type: "create_job_track",
+      idempotencyKey: "create-with-jd-images",
+      companyName: "字节跳动",
+      roleName: "AI 产品经理",
+      jobDescription: { imageAssetIds: ["asset-jd-1", "asset-jd-2"] },
+    }, { userId: "user-1" });
+
+    expect(created).toMatchObject({ outcome: "created", jobTrack: { lifecycle: "planned" } });
+  });
+
   it("完成投递会绑定历史简历并生成一条投递事实", async () => {
     const workflow = createInMemoryJobWorkflow({
       resumes: [{ id: "resume-v3", userId: "user-1" }],

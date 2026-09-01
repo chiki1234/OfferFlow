@@ -15,7 +15,7 @@ export function JobActionsPanel({
   jobTrackId: string;
   lifecycle: "planned" | "active" | "ended";
   resumes: Array<{ id: string; name: string }>;
-  tokens: { submit: string; assessment: string; interview: string; resume: string; task: string; rejection: string; end: string; progress: string; delete: string };
+  tokens: { submit: string; assessment: string; interview: string; resume: string; jdImages: string; task: string; rejection: string; end: string; progress: string; delete: string };
 }) {
   const [assessmentTiming, setAssessmentTiming] = useState<"deadline" | "fixed_slot">("deadline");
   if (lifecycle === "ended") return <p className="detail-note">该求职推进已结束，历史记录仍会保留。</p>;
@@ -26,6 +26,7 @@ export function JobActionsPanel({
         <label>简历文件<input accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" name="resumeFile" type="file" required /></label>
         <p className="form-hint">支持 PDF 或 DOCX，最大 10MB。</p>
       </ActionForm>
+      <JobDescriptionImageForm jobTrackId={jobTrackId} token={tokens.jdImages} />
       <ActionForm disabled={!resumes.length} intent="submit" jobTrackId={jobTrackId} token={tokens.submit} title="记录已投递">
         {resumes.length ? <><label>投递简历<select name="resumeId" required>{resumes.map((resume) => <option key={resume.id} value={resume.id}>{resume.name}</option>)}</select></label><label>投递时间<input name="submittedAt" type="datetime-local" required /></label></> : <p className="form-hint">先上传一个简历版本，再记录投递。</p>}
       </ActionForm>
@@ -33,6 +34,7 @@ export function JobActionsPanel({
     </div>;
   }
   return <div className="detail-action-stack">
+    <JobDescriptionImageForm jobTrackId={jobTrackId} token={tokens.jdImages} />
     <ActionForm intent="assessment" jobTrackId={jobTrackId} token={tokens.assessment} title="记录测评 / 笔试">
       <label>类型<select name="assessmentKind"><option value="assessment">测评</option><option value="written_test">笔试</option></select></label>
       <label>标题<input name="title" placeholder="例如：完成在线测评" required /></label>
@@ -62,6 +64,10 @@ export function JobActionsPanel({
       <label>原因<select name="reason"><option value="withdrawn">主动放弃</option><option value="accepted_elsewhere">已接受其他 Offer</option><option value="position_closed">岗位关闭</option><option value="other">其他</option></select></label>
     </ActionForm>
   </div>;
+}
+
+function JobDescriptionImageForm({ jobTrackId, token }: { jobTrackId: string; token: string }) {
+  return <ActionForm intent="upload_jd_images" jobTrackId={jobTrackId} token={token} title="补充 JD 截图"><label>JD 图片<input accept="image/jpeg,image/png,image/webp" name="jdImages" type="file" multiple required /></label><p className="form-hint">支持 JPEG、PNG、WebP，一次最多 4 张，每张最大 5MB。</p></ActionForm>;
 }
 
 function ActionForm({ intent, jobTrackId, token, title, children, disabled = false }: { intent: string; jobTrackId: string; token: string; title: string; children: React.ReactNode; disabled?: boolean }) {

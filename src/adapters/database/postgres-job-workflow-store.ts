@@ -1,7 +1,9 @@
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import type { AppDatabase } from "@/db/client";
 import {
   actionReceipts,
+  assetLinks,
+  assets,
   assessments,
   events,
   interviews,
@@ -44,6 +46,7 @@ export function createPostgresJobWorkflowStore(db: AppDatabase): JobWorkflowStor
               createdAt: jobTracks.createdAt,
               createdVia: jobTracks.createdVia,
               version: jobTracks.version,
+              descriptionId: jobDescriptions.id,
               descriptionText: jobDescriptions.textContent,
             })
             .from(jobTracks)
@@ -51,8 +54,13 @@ export function createPostgresJobWorkflowStore(db: AppDatabase): JobWorkflowStor
             .where(and(eq(jobTracks.id, jobTrackId), eq(jobTracks.userId, userId)))
             .limit(1);
 
-          return row
-            ? {
+          if (!row) return null;
+          const imageRows = row.descriptionId
+            ? await databaseTransaction.select({ id: assetLinks.assetId }).from(assetLinks)
+                .where(and(eq(assetLinks.ownerType, "job_description"), eq(assetLinks.ownerId, row.descriptionId)))
+                .orderBy(assetLinks.sortOrder)
+            : [];
+          return {
                 id: row.id,
                 userId: row.userId,
                 companyName: row.companyName,
@@ -66,10 +74,9 @@ export function createPostgresJobWorkflowStore(db: AppDatabase): JobWorkflowStor
                 version: row.version,
                 jobDescription: {
                   text: row.descriptionText,
-                  imageAssetIds: [],
+                  imageAssetIds: imageRows.map((item) => item.id),
                 },
-              }
-            : null;
+              };
         };
 
         const loadAssessmentWithTask = async (
@@ -229,7 +236,14 @@ export function createPostgresJobWorkflowStore(db: AppDatabase): JobWorkflowStor
           },
           async insertJobTrack(jobTrack) {
             if (jobTrack.jobDescription.imageAssetIds.length > 0) {
-              throw new Error("VALIDATION_ERROR: JD image persistence is not implemented yet");
+              const ownedAssets = await databaseTransaction.select({ id: assets.id }).from(assets).where(and(
+                eq(assets.userId, jobTrack.userId),
+                eq(assets.kind, "jd_image"),
+                inArray(assets.id, jobTrack.jobDescription.imageAssetIds),
+              ));
+              if (ownedAssets.length !== new Set(jobTrack.jobDescription.imageAssetIds).size) {
+                throw new Error("NOT_FOUND: one or more JD images were not found");
+              }
             }
             await databaseTransaction.insert(jobTracks).values({
               id: jobTrack.id,
@@ -242,12 +256,20 @@ export function createPostgresJobWorkflowStore(db: AppDatabase): JobWorkflowStor
               updatedAt: new Date(jobTrack.createdAt),
               createdVia: jobTrack.createdVia,
             });
-            await databaseTransaction.insert(jobDescriptions).values({
+            const [description] = await databaseTransaction.insert(jobDescriptions).values({
               jobTrackId: jobTrack.id,
               textContent: jobTrack.jobDescription.text,
               createdAt: new Date(jobTrack.createdAt),
               updatedAt: new Date(jobTrack.createdAt),
-            });
+            }).returning({ id: jobDescriptions.id });
+            if (jobTrack.jobDescription.imageAssetIds.length) {
+              await databaseTransaction.insert(assetLinks).values(jobTrack.jobDescription.imageAssetIds.map((assetId, sortOrder) => ({
+                assetId,
+                ownerType: "job_description" as const,
+                ownerId: description.id,
+                sortOrder,
+              })));
+            }
             const inserted = await loadJobTrack(jobTrack.userId, jobTrack.id);
             if (!inserted) {
               throw new Error("INTERNAL_ERROR: inserted job track could not be read");
@@ -255,7 +277,16 @@ export function createPostgresJobWorkflowStore(db: AppDatabase): JobWorkflowStor
             return inserted;
           },
           async updateJobTrackContext(input) {
-            if (input.jobDescription.imageAssetIds.length > 0) throw new Error("VALIDATION_ERROR: JD image persistence is not implemented yet");
+            if (input.jobDescription.imageAssetIds.length) {
+              const ownedAssets = await databaseTransaction.select({ id: assets.id }).from(assets).where(and(
+                eq(assets.userId, input.userId),
+                eq(assets.kind, "jd_image"),
+                inArray(assets.id, input.jobDescription.imageAssetIds),
+              ));
+              if (ownedAssets.length !== new Set(input.jobDescription.imageAssetIds).size) {
+                throw new Error("NOT_FOUND: one or more JD images were not found");
+              }
+            }
             const changed = await databaseTransaction.update(jobTracks).set({
               companyName: input.companyName,
               roleName: input.roleName,
@@ -272,6 +303,21 @@ export function createPostgresJobWorkflowStore(db: AppDatabase): JobWorkflowStor
               textContent: input.jobDescription.text,
               updatedAt: new Date(),
             }).where(eq(jobDescriptions.jobTrackId, input.jobTrackId));
+            const [description] = await databaseTransaction.select({ id: jobDescriptions.id }).from(jobDescriptions)
+              .where(eq(jobDescriptions.jobTrackId, input.jobTrackId)).limit(1);
+            if (!description) throw new Error("NOT_FOUND: job description was not found");
+            await databaseTransaction.delete(assetLinks).where(and(
+              eq(assetLinks.ownerType, "job_description"),
+              eq(assetLinks.ownerId, description.id),
+            ));
+            if (input.jobDescription.imageAssetIds.length) {
+              await databaseTransaction.insert(assetLinks).values(input.jobDescription.imageAssetIds.map((assetId, sortOrder) => ({
+                assetId,
+                ownerType: "job_description" as const,
+                ownerId: description.id,
+                sortOrder,
+              })));
+            }
             return loadJobTrack(input.userId, input.jobTrackId);
           },
           findJobTrack: loadJobTrack,

@@ -191,7 +191,7 @@ async function executeUpdateJobTrackContext(
   const companyName = command.companyName.trim();
   const roleName = command.roleName.trim();
   const text = command.jobDescription.text?.trim() || null;
-  const imageAssetIds = command.jobDescription.imageAssetIds ?? [];
+  const imageAssetIds = command.jobDescription.imageAssetIds ?? existing.jobDescription.imageAssetIds;
   if (!companyName || !roleName) throw new Error("VALIDATION_ERROR: companyName and roleName are required");
   if (!text && imageAssetIds.length === 0 && existing.createdVia !== "quick_import") throw new Error("VALIDATION_ERROR: jobDescription requires text or an image");
   const updated = await transaction.updateJobTrackContext({

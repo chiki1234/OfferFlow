@@ -1,10 +1,21 @@
-import { and, asc, desc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, ilike, or, sql } from "drizzle-orm";
 import { experiences, faqs, interviews, jobTracks, resumeExperiences, resumes } from "@/db/schema";
 import { getDatabaseRuntime } from "@/db/runtime";
+import { normalizeFaqLibraryFilters } from "./faq-filters";
 
-export async function getKnowledgeLibrary(userId: string) {
+export async function getKnowledgeLibrary(userId: string, input: { query?: string; kind?: string; category?: string } = {}) {
   const db = getDatabaseRuntime().db;
-  const [experienceRows, faqRows, interviewRows, resumeRows, linkRows] = await Promise.all([
+  const filters = normalizeFaqLibraryFilters(input);
+  const faqConditions = [eq(faqs.userId, userId)];
+  if (filters.query) {
+    const escapedQuery = filters.query.replace(/[\\%_]/g, "\\$&");
+    const searchCondition = or(ilike(faqs.question, `%${escapedQuery}%`), ilike(faqs.answer, `%${escapedQuery}%`));
+    if (searchCondition) faqConditions.push(searchCondition);
+  }
+  if (filters.kind) faqConditions.push(eq(faqs.kind, filters.kind));
+  if (filters.category) faqConditions.push(eq(faqs.category, filters.category));
+
+  const [experienceRows, faqRows, interviewRows, resumeRows, linkRows, faqCountRows] = await Promise.all([
     db.select({
       id: experiences.id,
       name: experiences.name,
@@ -32,7 +43,7 @@ export async function getKnowledgeLibrary(userId: string) {
       .leftJoin(experiences, eq(experiences.id, faqs.experienceId))
       .innerJoin(interviews, eq(interviews.id, faqs.sourceInterviewId))
       .innerJoin(jobTracks, eq(jobTracks.id, interviews.jobTrackId))
-      .where(eq(faqs.userId, userId))
+      .where(and(...faqConditions))
       .orderBy(desc(faqs.createdAt)),
     db.select({
       id: interviews.id,
@@ -51,8 +62,11 @@ export async function getKnowledgeLibrary(userId: string) {
       .innerJoin(resumes, eq(resumes.id, resumeExperiences.resumeId))
       .where(eq(resumes.userId, userId))
       .orderBy(asc(resumeExperiences.sortOrder)),
+    db.select({ count: sql<number>`count(*)::int` }).from(faqs).where(eq(faqs.userId, userId)),
   ]);
   return {
+    filters,
+    totalFaqCount: faqCountRows[0]?.count ?? 0,
     experiences: experienceRows,
     faqs: faqRows.map((row) => ({ ...row, createdAt: row.createdAt.toISOString() })),
     interviews: interviewRows.map((row) => ({ ...row, startAt: row.startAt.toISOString() })),

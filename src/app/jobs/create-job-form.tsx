@@ -30,9 +30,14 @@ export function CreateJobForm({ idempotencyKey }: { idempotencyKey: string }) {
         <input name="roleName" placeholder="例如：AI 解决方案工程师" required />
       </label>
       <label>
-        岗位 JD
-        <textarea name="jobDescription" placeholder="粘贴岗位职责和要求…" rows={8} required />
+        岗位 JD 文本
+        <textarea name="jobDescription" placeholder="粘贴岗位职责和要求，或在下方上传截图…" rows={8} />
       </label>
+      <label>
+        JD 图片（可选）
+        <input accept="image/jpeg,image/png,image/webp" name="jobDescriptionImages" type="file" multiple />
+      </label>
+      <p className="form-hint">JD 文本和图片至少填写一种；图片一次最多 4 张，每张最大 5MB。</p>
       <label>
         <span className="label-with-icon"><Link2 size={15} /> 岗位链接（可选）</span>
         <input name="jobUrl" placeholder="https://" type="url" />

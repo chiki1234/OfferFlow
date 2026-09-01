@@ -22,6 +22,7 @@ const timestamps = {
 export const jobLifecycle = pgEnum("job_lifecycle", ["planned", "active", "ended"]);
 export const jobCreatedVia = pgEnum("job_created_via", ["normal", "quick_import"]);
 export const assetKind = pgEnum("asset_kind", ["jd_image", "resume", "transcript"]);
+export const assetOwnerType = pgEnum("asset_owner_type", ["job_description"]);
 export const assessmentKind = pgEnum("assessment_kind", ["assessment", "written_test"]);
 export const assessmentTimingType = pgEnum("assessment_timing_type", [
   "deadline",
@@ -71,6 +72,22 @@ export const assets = pgTable(
   (table) => [
     uniqueIndex("assets_storage_key_unique").on(table.storageKey),
     index("assets_user_kind_idx").on(table.userId, table.kind),
+  ],
+);
+
+export const assetLinks = pgTable(
+  "asset_links",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    assetId: uuid("asset_id").notNull().references(() => assets.id, { onDelete: "cascade" }),
+    ownerType: assetOwnerType("owner_type").notNull(),
+    ownerId: uuid("owner_id").notNull(),
+    sortOrder: integer("sort_order").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("asset_links_owner_asset_unique").on(table.ownerType, table.ownerId, table.assetId),
+    index("asset_links_owner_sort_idx").on(table.ownerType, table.ownerId, table.sortOrder),
   ],
 );
 

@@ -30,9 +30,11 @@ export function FaqBatchForm({ token, interviews, experiences }: { token: string
   </form>;
 }
 
-export function ResumeExperienceForm({ resumes, experiences }: { resumes: Array<{ id: string; name: string }>; experiences: Array<{ id: string; name: string }> }) {
+export function ResumeExperienceForm({ resumes, experiences }: { resumes: Array<{ id: string; name: string; experienceIds: string[] }>; experiences: Array<{ id: string; name: string }> }) {
   const [state, action] = useActionState(setResumeExperiencesAction, initialState);
-  return <form action={action} className="create-form knowledge-form"><h3>简历包含哪些经历？</h3><label>简历<select name="resumeId" required>{resumes.map((resume) => <option key={resume.id} value={resume.id}>{resume.name}</option>)}</select></label><fieldset className="experience-checks">{experiences.map((item) => <label key={item.id}><input type="checkbox" name="experienceIds" value={item.id} />{item.name}</label>)}</fieldset><Feedback state={state} /><Submit disabled={!resumes.length} label="保存关联" /></form>;
+  const [resumeId, setResumeId] = useState(resumes[0]?.id ?? "");
+  const selectedExperienceIds = resumes.find((resume) => resume.id === resumeId)?.experienceIds ?? [];
+  return <form action={action} className="create-form knowledge-form"><h3>简历包含哪些经历？</h3><label>简历<select name="resumeId" value={resumeId} onChange={(event) => setResumeId(event.target.value)} required><option value="">选择简历</option>{resumes.map((resume) => <option key={resume.id} value={resume.id}>{resume.name}</option>)}</select></label><fieldset className="experience-checks" key={`${resumeId}:${selectedExperienceIds.join(",")}`}>{experiences.map((item) => <label key={item.id}><input type="checkbox" name="experienceIds" value={item.id} defaultChecked={selectedExperienceIds.includes(item.id)} />{item.name}</label>)}</fieldset>{resumeId && <p className="form-hint">当前已关联 {selectedExperienceIds.length} 项经历。</p>}<Feedback state={state} /><Submit disabled={!resumes.length || !resumeId} label="保存关联" /></form>;
 }
 
 export function FaqEditor({ faq, experiences }: { faq: { id: string; question: string; answer: string; kind: "experience" | "general"; category: string; experienceId: string | null }; experiences: Array<{ id: string; name: string }> }) {

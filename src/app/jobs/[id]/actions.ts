@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
+import { uploadJobDescriptionImages } from "@/modules/job-description-assets/service";
 import { getJobWorkflow } from "@/modules/job-workflow/composition";
 import { uploadResumeVersion } from "@/modules/resume-library/service";
 import { getCurrentActor } from "@/shared/actor/current-actor";
@@ -10,7 +11,7 @@ import { getCurrentActor } from "@/shared/actor/current-actor";
 export type JobDetailActionState = { error: string | null; success: string | null };
 
 const baseSchema = z.object({
-  intent: z.enum(["submit", "update_context", "assessment", "interview", "reschedule_interview", "save_interview_transcript", "task", "update_task", "complete_task", "cancel_task", "complete_assessment", "cancel_assessment", "cancel_interview", "confirm_interview_occurred", "complete_interview_review", "record_rejection", "end_job_track", "record_generic_progress", "delete_planned_job_track", "upload_resume"]),
+  intent: z.enum(["submit", "update_context", "assessment", "interview", "reschedule_interview", "save_interview_transcript", "task", "update_task", "complete_task", "cancel_task", "complete_assessment", "cancel_assessment", "cancel_interview", "confirm_interview_occurred", "complete_interview_review", "record_rejection", "end_job_track", "record_generic_progress", "delete_planned_job_track", "upload_resume", "upload_jd_images"]),
   idempotencyKey: z.string().min(8),
   jobTrackId: z.uuid(),
 });
@@ -62,6 +63,12 @@ export async function jobDetailAction(
         });
         revalidateWorkspace(base.data.jobTrackId);
         return { error: null, success: "简历版本已上传。" };
+      }
+      case "upload_jd_images": {
+        const files = formData.getAll("jdImages").filter((item): item is File => item instanceof File && item.size > 0);
+        await uploadJobDescriptionImages({ userId: actor.userId, jobTrackId: base.data.jobTrackId, files });
+        revalidateWorkspace(base.data.jobTrackId);
+        return { error: null, success: `已上传 ${files.length} 张 JD 图片。` };
       }
       case "submit": {
         const data = z.object({ resumeId: z.uuid(), submittedAt: z.string().min(1) }).parse({

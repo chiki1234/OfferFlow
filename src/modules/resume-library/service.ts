@@ -1,12 +1,13 @@
 import { createHash, randomUUID } from "node:crypto";
-import { DeleteObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { DeleteObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
+import { getPrivateObjectStorage } from "@/adapters/storage/private-object-storage";
 import { assets, resumes } from "@/db/schema";
 import { getDatabaseRuntime } from "@/db/runtime";
 import { validateResumeUpload } from "./validation";
 
 export async function uploadResumeVersion(input: { userId: string; file: File; name?: string }) {
   const { extension } = validateResumeUpload(input.file);
-  const storage = getStorageRuntime();
+  const storage = getPrivateObjectStorage();
   const bytes = Buffer.from(await input.file.arrayBuffer());
   const assetId = randomUUID();
   const resumeId = randomUUID();
@@ -42,27 +43,4 @@ export async function uploadResumeVersion(input: { userId: string; file: File; n
     throw error;
   }
   return { id: resumeId, name: input.name?.trim() || input.file.name };
-}
-
-function getStorageRuntime() {
-  const endpoint = requiredEnv("S3_ENDPOINT");
-  const bucket = requiredEnv("S3_BUCKET");
-  return {
-    bucket,
-    client: new S3Client({
-      endpoint,
-      region: requiredEnv("S3_REGION"),
-      forcePathStyle: true,
-      credentials: {
-        accessKeyId: requiredEnv("S3_ACCESS_KEY"),
-        secretAccessKey: requiredEnv("S3_SECRET_KEY"),
-      },
-    }),
-  };
-}
-
-function requiredEnv(name: string): string {
-  const value = process.env[name];
-  if (!value) throw new Error(`${name} is required`);
-  return value;
 }
