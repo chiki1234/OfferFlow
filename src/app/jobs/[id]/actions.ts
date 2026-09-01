@@ -115,23 +115,29 @@ export async function jobDetailAction(
       }
       case "interview": {
         const data = z.object({
+          sequenceNo: z.coerce.number().int().positive().optional(),
           roundLabel: z.string().trim().min(1).max(255),
           interviewType: z.string().trim().min(1).max(255),
           startAt: z.string().min(1), endAt: z.string().min(1), receivedAt: z.string().min(1),
           meetingUrl: z.union([z.url(), z.literal("")]),
+          notes: z.string().trim().max(5000).optional(),
         }).parse({
+          sequenceNo: formData.get("sequenceNo") || undefined,
           roundLabel: formData.get("roundLabel"), interviewType: formData.get("interviewType"),
           startAt: formData.get("startAt"), endAt: formData.get("endAt"),
           receivedAt: formData.get("receivedAt"), meetingUrl: formData.get("meetingUrl"),
+          notes: formData.get("notes") || undefined,
         });
         await workflow.execute({
           type: "schedule_interview",
           idempotencyKey: base.data.idempotencyKey,
           jobTrackId: base.data.jobTrackId,
+          sequenceNo: data.sequenceNo,
           roundLabel: data.roundLabel,
           interviewType: data.interviewType,
           startAt: toIso(data.startAt), endAt: toIso(data.endAt),
           receivedAt: toIso(data.receivedAt), meetingUrl: data.meetingUrl || undefined,
+          notes: data.notes,
         }, actor);
         revalidateWorkspace(base.data.jobTrackId);
         return { error: null, success: "已安排面试。" };

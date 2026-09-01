@@ -43,12 +43,14 @@ export function JobActionsPanel({
       <label>收到邀请时间<input name="receivedAt" type="datetime-local" required /></label>
     </ActionForm>
     <ActionForm intent="interview" jobTrackId={jobTrackId} token={tokens.interview} title="安排面试">
+      <label>轮次序号（可选）<input name="sequenceNo" type="number" min="1" placeholder="1" /></label>
       <label>轮次<input name="roundLabel" placeholder="一面 / HR 沟通" required /></label>
       <label>方式<input name="interviewType" placeholder="视频面试" required /></label>
       <label>开始<input name="startAt" type="datetime-local" required /></label>
       <label>结束<input name="endAt" type="datetime-local" required /></label>
       <label>收到邀请时间<input name="receivedAt" type="datetime-local" required /></label>
       <label>会议链接（可选）<input name="meetingUrl" type="url" placeholder="https://" /></label>
+      <label>备注（可选）<textarea name="notes" rows={3} placeholder="联系人、准备重点或其他说明" /></label>
     </ActionForm>
     <ActionForm intent="task" jobTrackId={jobTrackId} token={tokens.task} title="新增待办">
       <label>待办内容<input name="title" placeholder="例如：整理一面准备提纲" required /></label>

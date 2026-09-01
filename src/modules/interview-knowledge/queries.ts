@@ -1,5 +1,5 @@
 import { and, asc, desc, eq, ilike, or, sql } from "drizzle-orm";
-import { assets, experiences, faqs, interviews, jobTracks, resumeExperiences, resumes, tasks } from "@/db/schema";
+import { assets, experiences, faqs, interviews, jobDescriptions, jobTracks, resumeExperiences, resumes, tasks } from "@/db/schema";
 import { getDatabaseRuntime } from "@/db/runtime";
 import { normalizeFaqLibraryFilters } from "./faq-filters";
 
@@ -130,8 +130,13 @@ export async function getInterviewKnowledgeDetail(userId: string, interviewId: s
     companyName: jobTracks.companyName,
     roleName: jobTracks.roleName,
     resumeId: jobTracks.resumeId,
+    jobDescription: jobDescriptions.textContent,
+    resumeName: resumes.name,
+    resumeAssetId: resumes.assetId,
   }).from(interviews)
     .innerJoin(jobTracks, eq(jobTracks.id, interviews.jobTrackId))
+    .leftJoin(jobDescriptions, eq(jobDescriptions.jobTrackId, jobTracks.id))
+    .leftJoin(resumes, eq(resumes.id, jobTracks.resumeId))
     .leftJoin(assets, eq(assets.id, interviews.transcriptAssetId))
     .where(and(eq(interviews.id, interviewId), eq(jobTracks.userId, userId))).limit(1);
   if (!interview) throw new Error("NOT_FOUND: interview was not found");

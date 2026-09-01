@@ -38,6 +38,10 @@ Copy-Item .env.example .env.local
 
 打开 <http://localhost:3000>。
 
+服务就绪检查：<http://localhost:3000/api/health>。数据库和私有对象存储均可用时返回 `200`。
+
+生产容器镜像可以用 `docker build -t job-hunting-web .` 构建；运行时需注入 `.env.example` 中列出的环境变量。
+
 ## 质量门禁
 
 ```bash

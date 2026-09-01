@@ -616,6 +616,14 @@ a {
 .experience-card p { display: -webkit-box; overflow: hidden; margin: 13px 0 0; color: var(--muted); font-size: 12px; line-height: 1.65; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
 .knowledge-tools { align-self: start; padding: 24px; }
 .transcript-file-link { display: block; margin-bottom: 18px; border-radius: 10px; background: #edf4ef; color: var(--brand); padding: 11px 12px; font-size: 11px; font-weight: 750; }
+.interview-context-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 20px; }
+.interview-context-grid article { display: grid; gap: 7px; border-radius: 11px; background: #f5f7f4; padding: 14px; }
+.interview-context-grid span { color: var(--muted); font-size: 10px; font-weight: 700; }
+.interview-context-grid strong, .interview-context-grid a { color: var(--foreground); font-size: 12px; font-weight: 750; }
+.interview-context-grid a { color: var(--brand); }
+.interview-notes, .jd-context { margin-top: 16px; border-top: 1px solid var(--line); padding-top: 16px; }
+.interview-notes p, .jd-context p { white-space: pre-wrap; color: var(--muted); font-size: 12px; line-height: 1.7; }
+.jd-context summary { cursor: pointer; color: var(--brand); font-size: 11px; font-weight: 750; }
 .knowledge-form + .knowledge-form { margin-top: 24px; border-top: 1px solid var(--line); padding-top: 24px; }
 .knowledge-tools > .knowledge-form + .knowledge-form { margin-top: 24px; border-top: 1px solid var(--line); padding-top: 24px; }
 .knowledge-form h3 { margin: 0; font-size: 16px; }

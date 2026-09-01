@@ -165,7 +165,7 @@ async function readJobTrackDetail(
     }).from(events)
       .where(and(eq(events.userId, userId), eq(events.jobTrackId, jobTrackId)))
       .orderBy(desc(events.occurredAt)),
-    db.select({ id: resumes.id, name: resumes.name })
+    db.select({ id: resumes.id, name: resumes.name, assetId: resumes.assetId })
       .from(resumes).where(eq(resumes.userId, userId)).orderBy(desc(resumes.createdAt)),
     db.select({ id: assets.id, originalName: assets.originalName, mimeType: assets.mimeType })
       .from(assetLinks)
@@ -243,7 +243,8 @@ async function readJobTrackDetail(
       occurredAt: row.occurredAt.toISOString(),
       payload: row.payload,
     })),
-    resumes: resumeRows,
+    resumes: resumeRows.map(({ id, name }) => ({ id, name })),
+    selectedResume: resumeRows.find((resume) => resume.id === job.resumeId) ?? null,
     jobDescriptionImages: imageRows,
   };
 }

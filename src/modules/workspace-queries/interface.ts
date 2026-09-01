@@ -103,6 +103,7 @@ export type JobTrackDetailView = {
   tasks: TaskView[];
   events: JobEventView[];
   resumes: Array<{ id: string; name: string }>;
+  selectedResume: { id: string; name: string; assetId: string } | null;
   jobDescriptionImages: Array<{ id: string; originalName: string; mimeType: string }>;
 };
 
