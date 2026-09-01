@@ -67,6 +67,8 @@ jobs:
         run: |
           pnpm db:migrate
           pnpm db:seed
+      - name: Exercise the real domain workflow
+        run: pnpm test:integration
       - name: Smoke-test production runtime
         run: |
           pnpm start > /tmp/job-hunting-web.log 2>&1 &
