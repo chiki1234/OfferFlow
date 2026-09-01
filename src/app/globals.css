@@ -611,8 +611,10 @@ a {
 .inline-action-form small { color: #a23d2c; }
 .timeline-item { display: grid; grid-template-columns: auto 1fr; gap: 12px; }
 .timeline-item > span { width: 9px; height: 9px; margin-top: 5px; border-radius: 50%; background: var(--brand); box-shadow: 0 0 0 4px #e5f2ea; }
+.timeline-item.current > span { background: #d19b43; box-shadow: 0 0 0 4px #fff0d4; }
 .timeline-item div { display: flex; justify-content: space-between; gap: 18px; }
 .timeline-item strong { font-size: 13px; }
+.timeline-item p { margin: 5px 0 0; color: var(--muted); font-size: 11px; line-height: 1.55; }
 .timeline-item time { color: var(--muted); font-size: 11px; }
 
 .knowledge-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 36px; }
