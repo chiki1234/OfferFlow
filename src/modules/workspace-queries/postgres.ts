@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, sql } from "drizzle-orm";
 import type { AppDatabase } from "@/db/client";
-import { assetLinks, assets, assessments, events, interviews, jobDescriptions, jobTracks, resumes, tasks } from "@/db/schema";
+import { assetLinks, assets, assessments, events, experiences, faqs, interviews, jobDescriptions, jobTracks, resumeExperiences, resumes, tasks } from "@/db/schema";
 import { deriveJobTrackStatus, type JobTrackFacts } from "./derive-job-track-status";
 import { deriveJobTrackCurrentNext } from "./derive-job-track-current-next";
 import { markCalendarConflicts } from "./calendar-conflicts";
@@ -135,7 +135,7 @@ async function readJobTrackDetail(
   userId: string,
   jobTrackId: string,
 ): Promise<JobTrackDetailView> {
-  const [job, assessmentRows, interviewRows, taskRows, eventRows, resumeRows, imageRows] = await Promise.all([
+  const [job, assessmentRows, interviewRows, taskRows, eventRows, resumeRows, imageRows, selectedExperienceRows] = await Promise.all([
     db.select({
       id: jobTracks.id,
       companyName: jobTracks.companyName,
@@ -178,6 +178,18 @@ async function readJobTrackDetail(
       .innerJoin(jobTracks, eq(jobTracks.id, jobDescriptions.jobTrackId))
       .where(and(eq(assetLinks.ownerType, "job_description"), eq(jobTracks.id, jobTrackId), eq(jobTracks.userId, userId)))
       .orderBy(asc(assetLinks.sortOrder)),
+    db.select({
+      id: experiences.id,
+      name: experiences.name,
+      faqCount: sql<number>`count(${faqs.id})::int`,
+    }).from(jobTracks)
+      .innerJoin(resumes, eq(resumes.id, jobTracks.resumeId))
+      .innerJoin(resumeExperiences, eq(resumeExperiences.resumeId, resumes.id))
+      .innerJoin(experiences, eq(experiences.id, resumeExperiences.experienceId))
+      .leftJoin(faqs, eq(faqs.experienceId, experiences.id))
+      .where(and(eq(jobTracks.id, jobTrackId), eq(jobTracks.userId, userId)))
+      .groupBy(experiences.id, resumeExperiences.sortOrder)
+      .orderBy(asc(resumeExperiences.sortOrder)),
   ]);
   if (!job) throw new Error("NOT_FOUND: job track was not found");
   const now = new Date();
@@ -288,6 +300,7 @@ async function readJobTrackDetail(
     })),
     resumes: resumeRows.map(({ id, name }) => ({ id, name })),
     selectedResume: resumeRows.find((resume) => resume.id === job.resumeId) ?? null,
+    selectedResumeExperiences: selectedExperienceRows,
     jobDescriptionImages: imageRows,
     currentNext,
   };

@@ -641,6 +641,11 @@ a {
 .experience-card p { display: -webkit-box; overflow: hidden; margin: 13px 0 0; color: var(--muted); font-size: 12px; line-height: 1.65; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
 .knowledge-tools { align-self: start; padding: 24px; }
 .transcript-file-link { display: block; margin-bottom: 18px; border-radius: 10px; background: #edf4ef; color: var(--brand); padding: 11px 12px; font-size: 11px; font-weight: 750; }
+.resume-experience-links { margin: 18px 0; }
+.resume-experience-links > strong { color: var(--muted); font-size: 10px; }
+.resume-experience-links > div { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 9px; }
+.resume-experience-links a { display: inline-flex; align-items: center; gap: 7px; border-radius: 999px; background: #edf3ee; color: var(--brand-dark); padding: 7px 10px; font-size: 10px; font-weight: 750; }
+.resume-experience-links small { color: var(--muted); font-size: 9px; }
 .interview-context-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 20px; }
 .interview-context-grid article { display: grid; gap: 7px; border-radius: 11px; background: #f5f7f4; padding: 14px; }
 .interview-context-grid span { color: var(--muted); font-size: 10px; font-weight: 700; }

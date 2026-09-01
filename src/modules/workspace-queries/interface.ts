@@ -107,6 +107,7 @@ export type JobTrackDetailView = {
   events: JobEventView[];
   resumes: Array<{ id: string; name: string }>;
   selectedResume: { id: string; name: string; assetId: string } | null;
+  selectedResumeExperiences: Array<{ id: string; name: string; faqCount: number }>;
   jobDescriptionImages: Array<{ id: string; originalName: string; mimeType: string }>;
   currentNext: JobTrackCurrentNextView;
 };
