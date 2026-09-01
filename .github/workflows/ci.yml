@@ -76,9 +76,14 @@ jobs:
           pnpm start > /tmp/job-hunting-web.log 2>&1 &
           app_pid=$!
           for attempt in {1..30}; do
-            if curl --fail --silent --show-error http://127.0.0.1:3000/api/health; then
-              curl --fail --silent --show-error http://127.0.0.1:3000/ > /dev/null
-              curl --fail --silent --show-error http://127.0.0.1:3000/api/export > /tmp/job-hunting-export.json
+            if curl --fail --silent --show-error --output /tmp/job-hunting-health.json http://127.0.0.1:3000/api/health; then
+              node --input-type=module -e "import {readFile} from 'node:fs/promises'; const d=JSON.parse(await readFile('/tmp/job-hunting-health.json','utf8')); if(d.status!=='ok'||!d.checks?.authentication||!d.checks?.database||!d.checks?.objectStorage) process.exit(1)"
+              curl --fail --silent --show-error --dump-header /tmp/job-hunting-home-headers.txt --output /dev/null http://127.0.0.1:3000/
+              grep --ignore-case --quiet '^x-frame-options: DENY' /tmp/job-hunting-home-headers.txt
+              grep --ignore-case --quiet '^x-content-type-options: nosniff' /tmp/job-hunting-home-headers.txt
+              curl --fail --silent --show-error --dump-header /tmp/job-hunting-export-headers.txt --output /tmp/job-hunting-export.json http://127.0.0.1:3000/api/export
+              grep --ignore-case --quiet '^cache-control: private, no-store' /tmp/job-hunting-export-headers.txt
+              grep --ignore-case --quiet '^cross-origin-resource-policy: same-origin' /tmp/job-hunting-export-headers.txt
               node --input-type=module -e "import {readFile} from 'node:fs/promises'; const d=JSON.parse(await readFile('/tmp/job-hunting-export.json','utf8')); if(d.format!=='job-hunting-web-export') process.exit(1)"
               kill "$app_pid"
               exit 0
