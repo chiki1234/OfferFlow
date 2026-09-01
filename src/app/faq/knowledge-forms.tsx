@@ -21,18 +21,69 @@ export function ExperienceEditor({ experience }: { experience: { id: string; nam
 export function FaqBatchForm({ token, interviews, experiences }: { token: string; interviews: Array<{ id: string; companyName: string; roleName: string; roundLabel: string }>; experiences: Array<{ id: string; name: string }> }) {
   const [state, action] = useActionState(commitFaqBatchAction, initialState);
   const [raw, setRaw] = useState("");
-  const [kind, setKind] = useState<"experience" | "general">("experience");
+  const [bulkKind, setBulkKind] = useState<"experience" | "general">("experience");
+  const [bulkCategory, setBulkCategory] = useState<string>(experienceFaqCategories[0]);
+  const [bulkExperienceId, setBulkExperienceId] = useState(experiences[0]?.id ?? "");
+  const [drafts, setDrafts] = useState<FaqDraft[]>([]);
   const parsed = useMemo(() => raw.trim() ? parseFaqBlocks(raw) : [], [raw]);
-  const categories = kind === "experience" ? experienceFaqCategories : generalFaqCategories;
-  return <form action={action} className="create-form knowledge-form faq-import-form"><input type="hidden" name="idempotencyKey" value={token} /><h3>批量导入 FAQ</h3>
+  const bulkCategories = categoriesFor(bulkKind);
+  const selectedDrafts = drafts.filter((draft) => draft.selected);
+  const canSubmit = selectedDrafts.length > 0 && selectedDrafts.every((draft) => draft.kind === "general" || draft.experienceId);
+
+  function handleRawChange(value: string) {
+    setRaw(value);
+    setDrafts(parseFaqBlocks(value).flatMap((block) => block.status === "valid" ? [{
+      key: `${block.index}:${block.raw}`,
+      index: block.index,
+      selected: true,
+      question: block.question,
+      answer: block.answer,
+      kind: bulkKind,
+      category: bulkCategory,
+      experienceId: bulkKind === "experience" ? bulkExperienceId : "",
+    } satisfies FaqDraft] : []));
+  }
+
+  function updateDraft(key: string, update: Partial<FaqDraft>) {
+    setDrafts((current) => current.map((draft) => draft.key === key ? { ...draft, ...update } : draft));
+  }
+
+  function applyBulkSettings() {
+    setDrafts((current) => current.map((draft) => draft.selected ? {
+      ...draft,
+      kind: bulkKind,
+      category: bulkCategory,
+      experienceId: bulkKind === "experience" ? bulkExperienceId : "",
+    } : draft));
+  }
+
+  return <form action={action} className="create-form knowledge-form faq-import-form"><input type="hidden" name="idempotencyKey" value={token} /><input type="hidden" name="itemsJson" value={JSON.stringify(selectedDrafts.map(({ question, answer, kind, category, experienceId }) => ({ question, answer, kind, category, experienceId: kind === "experience" ? experienceId || null : null })))} /><h3>批量导入 FAQ</h3>
     <label>来源面试<select name="interviewId" required><option value="">选择一场面试</option>{interviews.map((item) => <option key={item.id} value={item.id}>{item.companyName} · {item.roleName} · {item.roundLabel}</option>)}</select></label>
-    <label>FAQ Blocks<textarea name="raw" rows={10} value={raw} onChange={(event) => setRaw(event.target.value)} placeholder={"Q: 为什么这样设计？\nA: 因为…\n\n---\n\nQ: 遇到了什么挑战？\nA: …"} required /></label>
+    <label>FAQ Blocks<textarea rows={10} value={raw} onChange={(event) => handleRawChange(event.target.value)} placeholder={"Q: 为什么这样设计？\nA: 因为…\n\n---\n\nQ: 遇到了什么挑战？\nA: …"} required /></label>
     {parsed.length > 0 && <div className="parse-summary"><strong>{parsed.filter((item) => item.status === "valid").length} 条可导入</strong>{parsed.some((item) => item.status === "invalid") && <span>{parsed.filter((item) => item.status === "invalid").length} 个 Block 需修正，本次会跳过</span>}</div>}
-    <label>问题类型<select name="kind" value={kind} onChange={(event) => setKind(event.target.value as "experience" | "general")}><option value="experience">经历问题</option><option value="general">综合问题</option></select></label>
-    {kind === "experience" && <label>绑定经历<select name="experienceId" required><option value="">选择 Experience</option>{experiences.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>}
-    <label>分类<select name="category" key={kind}>{categories.map((category) => <option key={category} value={category}>{category}</option>)}</select></label>
-    <Feedback state={state} /><Submit disabled={!interviews.length || !parsed.some((item) => item.status === "valid")} label="导入有效 FAQ" />
+    {drafts.length > 0 && <>
+      <fieldset className="faq-bulk-controls"><legend>批量设置已勾选项</legend><label>问题类型<select value={bulkKind} onChange={(event) => { const next = event.target.value as "experience" | "general"; setBulkKind(next); setBulkCategory(categoriesFor(next)[0]); }}><option value="experience">经历问题</option><option value="general">综合问题</option></select></label>{bulkKind === "experience" && <label>绑定经历<select value={bulkExperienceId} onChange={(event) => setBulkExperienceId(event.target.value)}><option value="">选择 Experience</option>{experiences.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>}<label>分类<select value={bulkCategory} onChange={(event) => setBulkCategory(event.target.value)}>{bulkCategories.map((category) => <option key={category} value={category}>{category}</option>)}</select></label><button className="secondary-button" type="button" onClick={applyBulkSettings}>应用到已勾选</button></fieldset>
+      <div className="faq-selection-row"><strong>逐条确认（已选 {selectedDrafts.length}/{drafts.length}）</strong><div><button type="button" onClick={() => setDrafts((current) => current.map((draft) => ({ ...draft, selected: true })))}>全选</button><button type="button" onClick={() => setDrafts((current) => current.map((draft) => ({ ...draft, selected: false })))}>清空</button></div></div>
+      <div className="faq-draft-list">{drafts.map((draft) => <article className={draft.selected ? "faq-draft selected" : "faq-draft"} key={draft.key}><label className="faq-draft-check"><input type="checkbox" checked={draft.selected} onChange={(event) => updateDraft(draft.key, { selected: event.target.checked })} /><span>FAQ {draft.index + 1}</span></label><label>问题<textarea rows={2} value={draft.question} onChange={(event) => updateDraft(draft.key, { question: event.target.value })} /></label><label>答案<textarea rows={4} value={draft.answer} onChange={(event) => updateDraft(draft.key, { answer: event.target.value })} /></label><div className="faq-draft-meta"><label>类型<select value={draft.kind} onChange={(event) => { const kind = event.target.value as "experience" | "general"; updateDraft(draft.key, { kind, category: categoriesFor(kind)[0], experienceId: kind === "experience" ? bulkExperienceId : "" }); }}><option value="experience">经历问题</option><option value="general">综合问题</option></select></label>{draft.kind === "experience" && <label>经历<select value={draft.experienceId} onChange={(event) => updateDraft(draft.key, { experienceId: event.target.value })}><option value="">选择 Experience</option>{experiences.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>}<label>分类<select value={draft.category} onChange={(event) => updateDraft(draft.key, { category: event.target.value })}>{categoriesFor(draft.kind).map((category) => <option key={category} value={category}>{category}</option>)}</select></label></div></article>)}</div>
+    </>}
+    {parsed.filter((block) => block.status === "invalid").map((block) => <div className="faq-invalid-block" key={`invalid-${block.index}`}><strong>FAQ {block.index + 1}：{block.error}</strong><pre>{block.raw}</pre></div>)}
+    <Feedback state={state} /><Submit disabled={!interviews.length || !canSubmit} label={selectedDrafts.length ? `导入 ${selectedDrafts.length} 条 FAQ` : "选择要导入的 FAQ"} />
   </form>;
+}
+
+type FaqDraft = {
+  key: string;
+  index: number;
+  selected: boolean;
+  question: string;
+  answer: string;
+  kind: "experience" | "general";
+  category: string;
+  experienceId: string;
+};
+
+function categoriesFor(kind: "experience" | "general"): readonly string[] {
+  return kind === "experience" ? experienceFaqCategories : generalFaqCategories;
 }
 
 export function ResumeExperienceForm({ resumes, experiences }: { resumes: Array<{ id: string; name: string; experienceIds: string[] }>; experiences: Array<{ id: string; name: string }> }) {

@@ -17,6 +17,7 @@ export default async function InterviewDetailPage({ params }: { params: Promise<
   const { id } = await params;
   const view = await getInterviewKnowledgeDetail(getCurrentActor().userId, id);
   const interview = view.interview;
+  const reviewDue = interview.status === "scheduled" && new Date(interview.startAt) <= new Date() && !interview.reviewedAt;
 
   return <main className="page-stack">
     <Link className="back-link" href={`/jobs/${interview.jobTrackId}`}><ArrowLeft size={16} />返回岗位</Link>
@@ -32,6 +33,7 @@ export default async function InterviewDetailPage({ params }: { params: Promise<
           <div className="interview-context-grid">
             <article><span>投递简历</span>{interview.resumeAssetId ? <a href={`/api/assets/${interview.resumeAssetId}`} target="_blank" rel="noreferrer">{interview.resumeName ?? "打开简历"}</a> : <strong>未绑定简历</strong>}</article>
             <article><span>面试时段</span><strong>{formatDateTime(interview.startAt)} – {formatTime(interview.endAt)}</strong></article>
+            <article><span>复盘状态</span><strong>{interview.reviewedAt ? `已于 ${formatDateTime(interview.reviewedAt)} 完成` : reviewDue ? "待复盘" : "尚未到复盘时间"}</strong></article>
           </div>
           {interview.notes && <div className="interview-notes"><strong>面试备注</strong><p>{interview.notes}</p></div>}
           <details className="jd-context"><summary>查看本岗位 JD</summary><p>{interview.jobDescription || "JD 以图片保存，可返回岗位详情查看。"}</p></details>
@@ -57,6 +59,7 @@ export default async function InterviewDetailPage({ params }: { params: Promise<
       </div>
 
       <aside className="surface-card knowledge-tools">
+        {reviewDue && <div className="interview-review-callout"><div><strong>复盘完成了吗？</strong><p>保存 Transcript 或 FAQ 会自动确认面试已发生；整理结束后在这里关闭提醒。</p></div><StatusActionButton intent="complete_interview_review" jobTrackId={interview.jobTrackId} subjectId={interview.id} token={randomUUID()} label="完成复盘" /></div>}
         {interview.status === "scheduled" && !interview.occurredAt && <InterviewPrepTaskForm jobTrackId={interview.jobTrackId} interviewId={interview.id} token={randomUUID()} />}
         {interview.status === "scheduled" && <InterviewScheduleEditor jobTrackId={interview.jobTrackId} interviewId={interview.id} token={randomUUID()} startAt={toLocalInput(interview.startAt)} endAt={toLocalInput(interview.endAt)} />}
         {interview.transcriptAssetId && <a className="transcript-file-link" href={`/api/assets/${interview.transcriptAssetId}`} target="_blank" rel="noreferrer">打开转录文件：{interview.transcriptAssetName ?? "Transcript"}</a>}

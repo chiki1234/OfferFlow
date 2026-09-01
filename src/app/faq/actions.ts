@@ -2,7 +2,6 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { parseFaqBlocks } from "@/modules/interview-knowledge/faq-parser";
 import { commitFaqBatch, createExperience, deleteFaq, setResumeExperiences, updateExperience, updateFaq } from "@/modules/interview-knowledge/service";
 import { getCurrentActor } from "@/shared/actor/current-actor";
 
@@ -37,30 +36,29 @@ export async function updateExperienceAction(_state: KnowledgeActionState, formD
 export async function commitFaqBatchAction(_state: KnowledgeActionState, formData: FormData): Promise<KnowledgeActionState> {
   try {
     const data = z.object({
-      idempotencyKey: z.string().min(8), interviewId: z.uuid(), raw: z.string().min(1),
-      kind: z.enum(["experience", "general"]), category: z.string().min(1), experienceId: z.string().optional(),
+      idempotencyKey: z.string().min(8), interviewId: z.uuid(), itemsJson: z.string().min(2).max(1_000_000),
     }).parse({
-      idempotencyKey: formData.get("idempotencyKey"), interviewId: formData.get("interviewId"), raw: formData.get("raw"),
-      kind: formData.get("kind"), category: formData.get("category"), experienceId: formData.get("experienceId") || undefined,
+      idempotencyKey: formData.get("idempotencyKey"), interviewId: formData.get("interviewId"), itemsJson: formData.get("itemsJson"),
     });
-    const parsed = parseFaqBlocks(data.raw);
-    const valid = parsed.filter((block) => block.status === "valid");
-    if (!valid.length) return { error: "没有可提交的有效 FAQ Block。", success: null };
+    const items = z.array(z.object({
+      question: z.string().trim().min(1).max(10_000),
+      answer: z.string().trim().min(1).max(100_000),
+      kind: z.enum(["experience", "general"]),
+      category: z.string().trim().min(1).max(64),
+      experienceId: z.uuid().nullable(),
+    })).min(1).max(100).parse(JSON.parse(data.itemsJson));
     await commitFaqBatch({
       userId: getCurrentActor().userId,
       idempotencyKey: data.idempotencyKey,
       interviewId: data.interviewId,
       committedAt: new Date().toISOString(),
-      items: valid.map((block) => ({
-        question: block.question, answer: block.answer, kind: data.kind, category: data.category,
-        experienceId: data.kind === "experience" ? data.experienceId ?? null : null,
-      })),
+      items,
     });
     revalidatePath("/");
     revalidatePath("/faq");
     revalidatePath("/jobs/[id]", "page");
-    const skipped = parsed.length - valid.length;
-    return { error: null, success: `已导入 ${valid.length} 条 FAQ${skipped ? `，跳过 ${skipped} 个损坏 Block` : ""}。` };
+    revalidatePath(`/interviews/${data.interviewId}`);
+    return { error: null, success: `已导入 ${items.length} 条 FAQ。` };
   } catch (error) {
     console.error("Failed to commit FAQ batch", error);
     return { error: "FAQ 导入失败，请检查分类和经历绑定。", success: null };
