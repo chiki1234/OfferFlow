@@ -15,7 +15,7 @@ export function CreateJobForm({ idempotencyKey, resumes }: { idempotencyKey: str
   const [creationMode, setCreationMode] = useState<"planned" | "active">("planned");
 
   return (
-    <form action={action} className="create-form">
+    <form action={action} className="create-form" id="create-job">
       <input name="idempotencyKey" type="hidden" value={idempotencyKey} />
       <div className="form-heading">
         <p className="eyebrow">快捷新增</p>

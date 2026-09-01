@@ -27,6 +27,7 @@ type MemoryState = {
   events: JobEventView[];
   assessments: Map<string, AssessmentView>;
   tasks: Map<string, TaskView>;
+  taskOwners: Map<string, string>;
   interviews: Map<string, InterviewView>;
 };
 
@@ -47,6 +48,7 @@ function createInMemoryJobWorkflowStore(
     events: [],
     assessments: new Map(),
     tasks: new Map(),
+    taskOwners: new Map(),
     interviews: new Map(),
   };
 
@@ -60,6 +62,7 @@ function createInMemoryJobWorkflowStore(
         events: [...state.events],
         assessments: new Map(state.assessments),
         tasks: new Map(state.tasks),
+        taskOwners: new Map(state.taskOwners),
         interviews: new Map(state.interviews),
       };
       const result = await work(createMemoryTransaction(working));
@@ -108,6 +111,7 @@ function createMemoryTransaction(state: MemoryState): JobWorkflowTransaction {
       state.assessments.set(input.assessment.id, input.assessment);
       if (input.task) {
         state.tasks.set(input.task.id, input.task);
+        state.taskOwners.set(input.task.id, input.userId);
       }
       return input;
     },
@@ -223,33 +227,30 @@ function createMemoryTransaction(state: MemoryState): JobWorkflowTransaction {
     },
     async insertTask(input) {
       state.tasks.set(input.task.id, input.task);
+      state.taskOwners.set(input.task.id, input.userId);
       return input.task;
     },
     async findTask(userId, taskId) {
       const task = state.tasks.get(taskId);
-      const jobTrack = task?.jobTrackId ? state.jobTracks.get(task.jobTrackId) : null;
-      return task && jobTrack?.userId === userId ? task : null;
+      return task && state.taskOwners.get(taskId) === userId ? task : null;
     },
     async updateTask(input) {
       const task = state.tasks.get(input.taskId);
-      const jobTrack = task?.jobTrackId ? state.jobTracks.get(task.jobTrackId) : null;
-      if (!task || jobTrack?.userId !== input.userId) throw new Error("NOT_FOUND: task was not found");
+      if (!task || state.taskOwners.get(input.taskId) !== input.userId) throw new Error("NOT_FOUND: task was not found");
       const updated = { ...task, title: input.title, deadlineAt: input.deadlineAt, interviewId: input.interviewId };
       state.tasks.set(updated.id, updated);
       return updated;
     },
     async completeTask(input) {
       const task = state.tasks.get(input.taskId);
-      const jobTrack = task?.jobTrackId ? state.jobTracks.get(task.jobTrackId) : null;
-      if (!task || jobTrack?.userId !== input.userId) throw new Error("NOT_FOUND: task was not found");
+      if (!task || state.taskOwners.get(input.taskId) !== input.userId) throw new Error("NOT_FOUND: task was not found");
       const completed = { ...task, completedAt: input.completedAt };
       state.tasks.set(completed.id, completed);
       return completed;
     },
     async cancelTask(input) {
       const task = state.tasks.get(input.taskId);
-      const jobTrack = task?.jobTrackId ? state.jobTracks.get(task.jobTrackId) : null;
-      if (!task || jobTrack?.userId !== input.userId) throw new Error("NOT_FOUND: task was not found");
+      if (!task || state.taskOwners.get(input.taskId) !== input.userId) throw new Error("NOT_FOUND: task was not found");
       const cancelled = { ...task, cancelledAt: input.cancelledAt };
       state.tasks.set(cancelled.id, cancelled);
       return cancelled;

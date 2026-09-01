@@ -69,9 +69,9 @@ export type CalendarItem = {
 export type DashboardActionItem = {
   id: string;
   sourceType: "assessment" | "task" | "interview_review";
-  jobTrackId: string;
-  companyName: string;
-  roleName: string;
+  jobTrackId: string | null;
+  companyName: string | null;
+  roleName: string | null;
   title: string;
   dueAt: string;
   overdue: boolean;

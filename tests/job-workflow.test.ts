@@ -532,6 +532,14 @@ describe("JobWorkflow", () => {
     expect(task).toMatchObject({ outcome: "task_created", task: { kind: "interview_prep", interviewId: interview.interview.id, jobTrackId: created.jobTrack.id } });
   });
 
+  it("通用待办可以不绑定岗位并独立完成", async () => {
+    const workflow = createInMemoryJobWorkflow();
+    const created = await workflow.execute({ type: "create_task", idempotencyKey: "general-task-create", kind: "generic", title: "更新个人作品集", deadlineAt: "2026-09-20T12:00:00.000Z" }, { userId: "user-1" });
+    const completed = await workflow.execute({ type: "complete_task", idempotencyKey: "general-task-complete", taskId: created.task.id, completedAt: "2026-09-20T10:00:00.000Z" }, { userId: "user-1" });
+    expect(created).toMatchObject({ outcome: "task_created", task: { jobTrackId: null, kind: "generic", title: "更新个人作品集" } });
+    expect(completed).toMatchObject({ outcome: "task_completed", task: { completedAt: "2026-09-20T10:00:00.000Z" } });
+  });
+
   it("记录拒信会结束求职推进并保留拒绝事实", async () => {
     const workflow = createInMemoryJobWorkflow({ resumes: [{ id: "resume-rejection", userId: "user-1" }] });
     const created = await workflow.execute({ type: "create_job_track", idempotencyKey: "reject-create", companyName: "百度", roleName: "AI 产品经理", jobDescription: { text: "智能搜索产品" } }, { userId: "user-1" });

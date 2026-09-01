@@ -33,7 +33,7 @@ export function WorkspaceShell({ children }: { children: React.ReactNode }) {
         </div>
       </aside>
       <div className="workspace-content">{children}</div>
-      <Link className="floating-add" href="/jobs?create=1" aria-label="新增待投递">
+      <Link className="floating-add" href="/quick" aria-label="打开全局快捷操作">
         <Plus size={24} />
       </Link>
       <nav className="mobile-nav" aria-label="移动端一级导航">

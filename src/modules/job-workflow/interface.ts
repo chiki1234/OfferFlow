@@ -120,7 +120,7 @@ export type SaveInterviewTranscriptCommand = {
 export type CreateTaskCommand = {
   type: "create_task";
   idempotencyKey: string;
-  jobTrackId: string;
+  jobTrackId?: string;
   interviewId?: string;
   kind: "generic" | "interview_prep";
   title: string;

@@ -47,9 +47,9 @@ export default async function HomePage() {
           ) : (
             <div className="agenda-list">
               {view.todayItems.map((item) => (
-                <Link href={`/jobs/${item.jobTrackId}`} className="agenda-item" key={`${item.sourceType}-${item.id}`}>
+                <Link href={item.jobTrackId ? `/jobs/${item.jobTrackId}` : "/quick"} className="agenda-item" key={`${item.sourceType}-${item.id}`}>
                   <span className={item.overdue ? "agenda-dot overdue" : "agenda-dot"} />
-                  <div><strong>{item.title}</strong><p>{item.companyName} · {item.roleName}</p></div>
+                  <div><strong>{item.title}</strong><p>{item.companyName && item.roleName ? `${item.companyName} · ${item.roleName}` : "通用待办"}</p></div>
                   <time>{formatDateTime(item.dueAt)}</time>
                 </Link>
               ))}

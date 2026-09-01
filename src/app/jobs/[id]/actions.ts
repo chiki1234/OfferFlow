@@ -182,7 +182,7 @@ export async function jobDetailAction(
         return { error: null, success: "面试转录已保存。" };
       }
       case "task": {
-        const data = z.object({ title: z.string().trim().min(1).max(255), deadlineAt: z.string().min(1), interviewId: z.union([z.uuid(), z.literal("")]) }).parse({ title: formData.get("title"), deadlineAt: formData.get("deadlineAt"), interviewId: formData.get("interviewId") || "" });
+        const data = z.object({ title: z.string().trim().min(1).max(255), deadlineAt: z.string().optional(), interviewId: z.union([z.uuid(), z.literal("")]) }).parse({ title: formData.get("title"), deadlineAt: formData.get("deadlineAt") || undefined, interviewId: formData.get("interviewId") || "" });
         await workflow.execute({
           type: "create_task",
           idempotencyKey: base.data.idempotencyKey,
@@ -190,7 +190,7 @@ export async function jobDetailAction(
           kind: data.interviewId ? "interview_prep" : "generic",
           interviewId: data.interviewId || undefined,
           title: data.title,
-          deadlineAt: toIso(data.deadlineAt),
+          deadlineAt: data.deadlineAt ? toIso(data.deadlineAt) : undefined,
         }, actor);
         revalidateWorkspace(base.data.jobTrackId);
         if (data.interviewId) revalidatePath(`/interviews/${data.interviewId}`);

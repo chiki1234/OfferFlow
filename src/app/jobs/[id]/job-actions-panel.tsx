@@ -54,7 +54,7 @@ export function JobActionsPanel({
     </ActionForm>
     <ActionForm intent="task" jobTrackId={jobTrackId} token={tokens.task} title="新增待办">
       <label>待办内容<input name="title" placeholder="例如：整理一面准备提纲" required /></label>
-      <label>截止时间<input name="deadlineAt" type="datetime-local" required /></label>
+      <label>截止时间（可选）<input name="deadlineAt" type="datetime-local" /></label>
     </ActionForm>
     <ActionForm intent="record_generic_progress" jobTrackId={jobTrackId} token={tokens.progress} title="记录其他进展">
       <label>进展摘要<textarea name="summary" rows={3} placeholder="例如：招聘方通知流程延后一周" required /></label>

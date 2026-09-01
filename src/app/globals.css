@@ -653,6 +653,19 @@ a {
   box-shadow: 0 12px 32px rgba(16, 87, 61, 0.28);
 }
 
+.quick-create-job { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 14px; margin-top: 34px; padding: 18px 20px; }
+.quick-create-job strong { font-size: 14px; }
+.quick-create-job p { margin: 5px 0 0; color: var(--muted); font-size: 11px; }
+.quick-action-grid { display: grid; grid-template-columns: 1fr 1fr; align-items: start; gap: 20px; margin-top: 20px; }
+.quick-action-card { padding: 24px; }
+.quick-action-card h2 { margin: 7px 0 0; font-size: 20px; }
+.quick-task-list { display: grid; gap: 9px; margin-top: 22px; border-top: 1px solid var(--line); padding-top: 18px; }
+.quick-task-list > strong { font-size: 12px; }
+.quick-task-list article { display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 8px; border-radius: 10px; background: #f5f7f4; padding: 10px 12px; }
+.quick-task-list article > div { display: grid; gap: 4px; }
+.quick-task-list span { font-size: 11px; font-weight: 700; }
+.quick-task-list small { color: var(--muted); font-size: 9px; }
+
 .mobile-nav {
   display: none;
 }
@@ -664,6 +677,7 @@ a {
   .jobs-layout { grid-template-columns: 1fr; }
   .detail-layout { grid-template-columns: 1fr; }
   .knowledge-layout { grid-template-columns: 1fr; }
+  .quick-action-grid { grid-template-columns: 1fr; }
   .faq-filter-bar { grid-template-columns: 1fr 1fr; }
   .faq-filter-bar label:first-child { grid-column: 1 / -1; }
   .detail-actions { position: static; order: -1; }
@@ -704,5 +718,7 @@ a {
   .faq-filter-bar { grid-template-columns: 1fr; }
   .faq-filter-bar label:first-child { grid-column: auto; }
   .milestone-item { grid-template-columns: 1fr auto; }
+  .quick-create-job { grid-template-columns: auto 1fr; }
+  .quick-create-job .primary-button { grid-column: 1 / -1; justify-content: center; }
   .inline-action-form { grid-column: 1 / -1; }
 }

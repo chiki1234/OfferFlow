@@ -39,7 +39,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
           {view.items.map((item) => (
             <article className={`surface-card calendar-item${item.hasConflict ? " conflict" : ""}`} key={`${item.sourceType}-${item.id}`}>
               <time>{formatDay(item.startAt)}<strong>{formatTime(item.startAt, item.isDeadline)}</strong></time>
-              <div><span className={`calendar-kind ${item.sourceType}`}>{kindLabel(item.sourceType)}</span>{item.hasConflict && <span className="conflict-label">时间冲突</span>}<h2>{item.title}</h2><p>{item.companyName} · {item.roleName}</p></div>
+              <div><span className={`calendar-kind ${item.sourceType}`}>{kindLabel(item.sourceType)}</span>{item.hasConflict && <span className="conflict-label">时间冲突</span>}<h2>{item.title}</h2><p>{item.companyName && item.roleName ? `${item.companyName} · ${item.roleName}` : "通用待办"}</p></div>
             </article>
           ))}
         </section>

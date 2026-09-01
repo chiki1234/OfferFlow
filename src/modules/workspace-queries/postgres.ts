@@ -329,13 +329,13 @@ async function readDashboard(
         dueAt: dueAt.toISOString(),
         overdue: dueAt < now,
       })),
-    ...taskRows.filter((row) => row.kind !== "assessment" && !row.completedAt && !row.cancelledAt && row.deadlineAt && row.deadlineAt <= todayEnd && row.jobTrackId && row.companyName && row.roleName)
+    ...taskRows.filter((row) => row.kind !== "assessment" && !row.completedAt && !row.cancelledAt && row.deadlineAt && row.deadlineAt <= todayEnd)
       .map((row) => ({
         id: row.id,
         sourceType: "task" as const,
-        jobTrackId: row.jobTrackId as string,
-        companyName: row.companyName as string,
-        roleName: row.roleName as string,
+        jobTrackId: row.jobTrackId,
+        companyName: row.companyName,
+        roleName: row.roleName,
         title: row.title,
         dueAt: (row.deadlineAt as Date).toISOString(),
         overdue: (row.deadlineAt as Date) < now,

@@ -336,22 +336,24 @@ async function executeCreateTask(
   transaction: JobWorkflowTransaction,
   generateId: () => string,
 ): Promise<CreateTaskResult> {
-  const jobTrack = await transaction.findJobTrack(context.userId, command.jobTrackId);
-  if (!jobTrack) throw new Error("NOT_FOUND: job track was not found");
-  if (jobTrack.lifecycle !== "active") throw new Error("CONFLICT: tasks can only be added to an active job track");
+  const jobTrack = command.jobTrackId ? await transaction.findJobTrack(context.userId, command.jobTrackId) : null;
+  if (command.jobTrackId && !jobTrack) throw new Error("NOT_FOUND: job track was not found");
+  if (jobTrack && jobTrack.lifecycle !== "active") throw new Error("CONFLICT: tasks can only be added to an active job track");
+  if (!jobTrack && command.kind !== "generic") throw new Error("VALIDATION_ERROR: only generic tasks can be created without a job track");
   const title = command.title.trim();
   if (!title) throw new Error("VALIDATION_ERROR: task title is required");
   const interviewId = command.interviewId ?? null;
+  if (!jobTrack && interviewId) throw new Error("VALIDATION_ERROR: an unbound task cannot reference an interview");
   if (command.kind === "interview_prep" && !interviewId) throw new Error("VALIDATION_ERROR: interview preparation task requires an interview");
   if (interviewId) {
     const interview = await transaction.findInterview(context.userId, interviewId);
-    if (!interview || interview.jobTrackId !== jobTrack.id) throw new Error("NOT_FOUND: interview was not found in this job track");
+    if (!interview || interview.jobTrackId !== jobTrack?.id) throw new Error("NOT_FOUND: interview was not found in this job track");
     if (interview.status === "cancelled") throw new Error("CONFLICT: tasks cannot be added to a cancelled interview");
   }
   const task = await transaction.insertTask({
     userId: context.userId,
     task: {
-      id: generateId(), jobTrackId: jobTrack.id, interviewId, assessmentId: null,
+      id: generateId(), jobTrackId: jobTrack?.id ?? null, interviewId, assessmentId: null,
       kind: command.kind, title,
       deadlineAt: command.deadlineAt ? parseTimestamp(command.deadlineAt, "deadlineAt") : null,
       completedAt: null, cancelledAt: null,
@@ -369,11 +371,11 @@ async function executeUpdateTask(
   if (!existing) throw new Error("NOT_FOUND: task was not found");
   if (existing.kind === "assessment") throw new Error("CONFLICT: assessment task must be updated through its assessment");
   if (existing.completedAt || existing.cancelledAt) throw new Error("CONFLICT: only an open task can be updated");
-  if (!existing.jobTrackId) throw new Error("CONFLICT: task is not attached to a job track");
   const title = command.title.trim();
   if (!title) throw new Error("VALIDATION_ERROR: task title is required");
   const interviewId = command.interviewId ?? null;
   if (interviewId) {
+    if (!existing.jobTrackId) throw new Error("CONFLICT: an unbound task cannot reference an interview");
     const interview = await transaction.findInterview(context.userId, interviewId);
     if (!interview || interview.jobTrackId !== existing.jobTrackId) {
       throw new Error("NOT_FOUND: interview was not found in this job track");
