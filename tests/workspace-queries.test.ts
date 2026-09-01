@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { deriveJobTrackStatus } from "@/modules/workspace-queries/derive-job-track-status";
+import { markCalendarConflicts } from "@/modules/workspace-queries/calendar-conflicts";
 
 describe("deriveJobTrackStatus", () => {
   it("未完成且逾期的测评会要求行动并标记逾期", () => {
@@ -80,5 +81,16 @@ describe("deriveJobTrackStatus", () => {
       attentionFlags: ["waiting_long"],
       reviewDueInterviewIds: [],
     });
+  });
+});
+
+describe("markCalendarConflicts", () => {
+  it("两个有时长的日程重叠时标记冲突，Deadline 点事项不误报", () => {
+    const result = markCalendarConflicts([
+      { id: "i1", sourceType: "interview", jobTrackId: "j1", companyName: "A", roleName: "R", title: "一面", startAt: "2026-09-08T02:00:00.000Z", endAt: "2026-09-08T03:00:00.000Z", isDeadline: false, hasConflict: false },
+      { id: "i2", sourceType: "assessment", jobTrackId: "j2", companyName: "B", roleName: "R", title: "笔试", startAt: "2026-09-08T02:30:00.000Z", endAt: "2026-09-08T04:00:00.000Z", isDeadline: false, hasConflict: false },
+      { id: "d1", sourceType: "task", jobTrackId: "j1", companyName: "A", roleName: "R", title: "截止", startAt: "2026-09-08T02:15:00.000Z", endAt: null, isDeadline: true, hasConflict: false },
+    ]);
+    expect(result.map((item) => item.hasConflict)).toEqual([true, true, false]);
   });
 });

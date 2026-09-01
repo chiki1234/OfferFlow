@@ -43,6 +43,7 @@ export function createPostgresJobWorkflowStore(db: AppDatabase): JobWorkflowStor
               submittedAt: jobTracks.submittedAt,
               createdAt: jobTracks.createdAt,
               createdVia: jobTracks.createdVia,
+              version: jobTracks.version,
               descriptionText: jobDescriptions.textContent,
             })
             .from(jobTracks)
@@ -62,6 +63,7 @@ export function createPostgresJobWorkflowStore(db: AppDatabase): JobWorkflowStor
                 submittedAt: row.submittedAt?.toISOString() ?? null,
                 createdAt: row.createdAt.toISOString(),
                 createdVia: row.createdVia,
+                version: row.version,
                 jobDescription: {
                   text: row.descriptionText,
                   imageAssetIds: [],
@@ -164,6 +166,7 @@ export function createPostgresJobWorkflowStore(db: AppDatabase): JobWorkflowStor
               cancelledAt: interviews.cancelledAt,
               occurredAt: interviews.occurredAt,
               reviewedAt: interviews.reviewedAt,
+              transcriptText: interviews.transcriptText,
             })
             .from(interviews)
             .innerJoin(jobTracks, eq(jobTracks.id, interviews.jobTrackId))
@@ -177,6 +180,7 @@ export function createPostgresJobWorkflowStore(db: AppDatabase): JobWorkflowStor
                 cancelledAt: row.cancelledAt?.toISOString() ?? null,
                 occurredAt: row.occurredAt?.toISOString() ?? null,
                 reviewedAt: row.reviewedAt?.toISOString() ?? null,
+                transcriptText: row.transcriptText,
               }
             : null;
         };
@@ -250,6 +254,26 @@ export function createPostgresJobWorkflowStore(db: AppDatabase): JobWorkflowStor
             }
             return inserted;
           },
+          async updateJobTrackContext(input) {
+            if (input.jobDescription.imageAssetIds.length > 0) throw new Error("VALIDATION_ERROR: JD image persistence is not implemented yet");
+            const changed = await databaseTransaction.update(jobTracks).set({
+              companyName: input.companyName,
+              roleName: input.roleName,
+              jobUrl: input.jobUrl,
+              updatedAt: new Date(),
+              version: sql`${jobTracks.version} + 1`,
+            }).where(and(
+              eq(jobTracks.id, input.jobTrackId),
+              eq(jobTracks.userId, input.userId),
+              eq(jobTracks.version, input.version),
+            )).returning({ id: jobTracks.id });
+            if (!changed.length) return null;
+            await databaseTransaction.update(jobDescriptions).set({
+              textContent: input.jobDescription.text,
+              updatedAt: new Date(),
+            }).where(eq(jobDescriptions.jobTrackId, input.jobTrackId));
+            return loadJobTrack(input.userId, input.jobTrackId);
+          },
           findJobTrack: loadJobTrack,
           async findResume(userId, resumeId) {
             const [resume] = await databaseTransaction
@@ -311,6 +335,16 @@ export function createPostgresJobWorkflowStore(db: AppDatabase): JobWorkflowStor
             }
             return completed;
           },
+          async cancelAssessmentWithTask(input) {
+            const cancelledAt = new Date(input.cancelledAt);
+            await databaseTransaction.update(assessments).set({ status: "cancelled", cancelledAt, updatedAt: cancelledAt })
+              .where(eq(assessments.id, input.assessmentId));
+            await databaseTransaction.update(tasks).set({ cancelledAt, updatedAt: cancelledAt })
+              .where(and(eq(tasks.assessmentId, input.assessmentId), eq(tasks.userId, input.userId)));
+            const cancelled = await loadAssessmentWithTask(input.userId, input.assessmentId);
+            if (!cancelled) throw new Error("NOT_FOUND: assessment was not found");
+            return cancelled;
+          },
           async insertInterview(interview) {
             await databaseTransaction.insert(interviews).values({
               id: interview.id,
@@ -326,6 +360,7 @@ export function createPostgresJobWorkflowStore(db: AppDatabase): JobWorkflowStor
               cancelledAt: interview.cancelledAt ? new Date(interview.cancelledAt) : null,
               occurredAt: interview.occurredAt ? new Date(interview.occurredAt) : null,
               reviewedAt: interview.reviewedAt ? new Date(interview.reviewedAt) : null,
+              transcriptText: interview.transcriptText,
             });
             return interview;
           },
@@ -396,6 +431,18 @@ export function createPostgresJobWorkflowStore(db: AppDatabase): JobWorkflowStor
             if (!reviewed) throw new Error("NOT_FOUND: interview was not found");
             return reviewed;
           },
+          async saveInterviewTranscript(input) {
+            const savedAt = new Date(input.savedAt);
+            await databaseTransaction.update(interviews).set({
+              transcriptText: input.transcriptText,
+              occurredAt: new Date(input.occurredAt),
+              updatedAt: savedAt,
+              version: sql`${interviews.version} + 1`,
+            }).where(eq(interviews.id, input.interviewId));
+            const saved = await loadInterview(input.userId, input.interviewId);
+            if (!saved) throw new Error("NOT_FOUND: interview was not found");
+            return saved;
+          },
           async insertTask(input) {
             await databaseTransaction.insert(tasks).values({
               id: input.task.id,
@@ -412,6 +459,17 @@ export function createPostgresJobWorkflowStore(db: AppDatabase): JobWorkflowStor
             return input.task;
           },
           findTask: loadTask,
+          async updateTask(input) {
+            await databaseTransaction.update(tasks).set({
+              title: input.title,
+              deadlineAt: input.deadlineAt ? new Date(input.deadlineAt) : null,
+              interviewId: input.interviewId,
+              updatedAt: new Date(),
+            }).where(and(eq(tasks.id, input.taskId), eq(tasks.userId, input.userId)));
+            const updated = await loadTask(input.userId, input.taskId);
+            if (!updated) throw new Error("NOT_FOUND: task was not found");
+            return updated;
+          },
           async completeTask(input) {
             const completedAt = new Date(input.completedAt);
             await databaseTransaction.update(tasks).set({ completedAt, updatedAt: completedAt })
@@ -419,6 +477,14 @@ export function createPostgresJobWorkflowStore(db: AppDatabase): JobWorkflowStor
             const completed = await loadTask(input.userId, input.taskId);
             if (!completed) throw new Error("NOT_FOUND: task was not found");
             return completed;
+          },
+          async cancelTask(input) {
+            const cancelledAt = new Date(input.cancelledAt);
+            await databaseTransaction.update(tasks).set({ cancelledAt, updatedAt: cancelledAt })
+              .where(and(eq(tasks.id, input.taskId), eq(tasks.userId, input.userId)));
+            const cancelled = await loadTask(input.userId, input.taskId);
+            if (!cancelled) throw new Error("NOT_FOUND: task was not found");
+            return cancelled;
           },
           async endJobTrack(input) {
             const endedAt = new Date(input.endedAt);
@@ -437,6 +503,12 @@ export function createPostgresJobWorkflowStore(db: AppDatabase): JobWorkflowStor
             const ended = await loadJobTrack(input.userId, input.jobTrackId);
             if (!ended) throw new Error("NOT_FOUND: job track was not found");
             return ended;
+          },
+          async deleteJobTrack(userId, jobTrackId) {
+            const deleted = await databaseTransaction.delete(jobTracks)
+              .where(and(eq(jobTracks.id, jobTrackId), eq(jobTracks.userId, userId)))
+              .returning({ id: jobTracks.id });
+            if (!deleted.length) throw new Error("NOT_FOUND: job track was not found");
           },
           async markApplicationSubmitted(input) {
             await databaseTransaction

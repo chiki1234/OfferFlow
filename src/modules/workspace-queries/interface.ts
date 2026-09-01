@@ -44,6 +44,7 @@ export type JobTrackListItem = {
   lastProgressAt: string | null;
   actionState: "action_required" | "waiting" | null;
   attentionFlags: Array<"overdue" | "waiting_long">;
+  version: number;
 };
 
 export type JobTrackListView = {
@@ -62,6 +63,7 @@ export type CalendarItem = {
   startAt: string;
   endAt: string | null;
   isDeadline: boolean;
+  hasConflict: boolean;
 };
 
 export type DashboardActionItem = {

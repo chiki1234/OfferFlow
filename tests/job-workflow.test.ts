@@ -476,6 +476,36 @@ describe("JobWorkflow", () => {
 
     expect(taskCreated).toMatchObject({ outcome: "task_created", task: { jobTrackId: created.jobTrack.id, kind: "generic", title: "整理一面准备提纲", completedAt: null, cancelledAt: null } });
     expect(completed).toMatchObject({ outcome: "task_completed", task: { id: taskCreated.task.id, completedAt: "2026-09-06T12:00:00.000Z" } });
+    const secondTask = await workflow.execute({ type: "create_task", idempotencyKey: "task-create-second", jobTrackId: created.jobTrack.id, kind: "generic", title: "已不再需要的准备", deadlineAt: "2026-09-08T15:59:00.000Z" }, { userId: "user-1" });
+    const cancelled = await workflow.execute({ type: "cancel_task", idempotencyKey: "task-cancel", taskId: secondTask.task.id, cancelledAt: "2026-09-06T13:00:00.000Z" }, { userId: "user-1" });
+    expect(cancelled).toMatchObject({ outcome: "task_cancelled", task: { id: secondTask.task.id, cancelledAt: "2026-09-06T13:00:00.000Z" } });
+  });
+
+  it("开放的普通待办可以修改标题、截止时间和面试关联", async () => {
+    const workflow = createInMemoryJobWorkflow({ resumes: [{ id: "resume-task-update", userId: "user-1" }] });
+    const created = await workflow.execute({ type: "create_job_track", idempotencyKey: "task-update-job", companyName: "小红书", roleName: "AI 产品经理", jobDescription: { text: "智能社区产品" } }, { userId: "user-1" });
+    await workflow.execute({ type: "submit_application", idempotencyKey: "task-update-submit", jobTrackId: created.jobTrack.id, resumeId: "resume-task-update", submittedAt: "2026-09-01T11:00:00.000Z" }, { userId: "user-1" });
+    const interview = await workflow.execute({ type: "schedule_interview", idempotencyKey: "task-update-interview", jobTrackId: created.jobTrack.id, roundLabel: "一面", interviewType: "视频面试", startAt: "2026-09-08T02:00:00.000Z", endAt: "2026-09-08T03:00:00.000Z", receivedAt: "2026-09-02T05:00:00.000Z" }, { userId: "user-1" });
+    const task = await workflow.execute({ type: "create_task", idempotencyKey: "task-update-create", jobTrackId: created.jobTrack.id, kind: "generic", title: "准备问题", deadlineAt: "2026-09-07T10:00:00.000Z" }, { userId: "user-1" });
+
+    const updated = await workflow.execute({
+      type: "update_task",
+      idempotencyKey: "task-update-save",
+      taskId: task.task.id,
+      title: "整理一面问题清单",
+      deadlineAt: "2026-09-07T12:00:00.000Z",
+      interviewId: interview.interview.id,
+    }, { userId: "user-1" });
+
+    expect(updated).toMatchObject({
+      outcome: "task_updated",
+      task: {
+        id: task.task.id,
+        title: "整理一面问题清单",
+        deadlineAt: "2026-09-07T12:00:00.000Z",
+        interviewId: interview.interview.id,
+      },
+    });
   });
 
   it("记录拒信会结束求职推进并保留拒绝事实", async () => {
@@ -519,5 +549,63 @@ describe("JobWorkflow", () => {
     }, { userId: "user-1" });
     expect(imported).toMatchObject({ outcome: "job_tracks_imported", jobTracks: [{ companyName: "华为", lifecycle: "active" }, { companyName: "腾讯", lifecycle: "active" }] });
     expect(imported.jobTracks.every((job) => job.resumeId === null && job.submittedAt === null)).toBe(true);
+  });
+
+  it("无法归入结构化环节的进展可以作为只读事实保留", async () => {
+    const workflow = createInMemoryJobWorkflow({ resumes: [{ id: "resume-progress", userId: "user-1" }] });
+    const created = await workflow.execute({ type: "create_job_track", idempotencyKey: "progress-create", companyName: "网易", roleName: "AI 产品经理", jobDescription: { text: "智能内容产品" } }, { userId: "user-1" });
+    await workflow.execute({ type: "submit_application", idempotencyKey: "progress-submit", jobTrackId: created.jobTrack.id, resumeId: "resume-progress", submittedAt: "2026-09-01T14:00:00.000Z" }, { userId: "user-1" });
+    const progress = await workflow.execute({ type: "record_generic_progress", idempotencyKey: "progress-record", jobTrackId: created.jobTrack.id, summary: "招聘方通知流程需要延后一周", occurredAt: "2026-09-08T02:00:00.000Z" }, { userId: "user-1" });
+    expect(progress).toMatchObject({ outcome: "progress_recorded", event: { kind: "GenericProgress", payload: { summary: "招聘方通知流程需要延后一周" } } });
+  });
+
+  it("取消测评会同步取消关联待办并记录事实", async () => {
+    const workflow = createInMemoryJobWorkflow({ resumes: [{ id: "resume-cancel-assessment", userId: "user-1" }] });
+    const created = await workflow.execute({ type: "create_job_track", idempotencyKey: "cancel-assessment-create", companyName: "滴滴", roleName: "AI 产品经理", jobDescription: { text: "智能出行产品" } }, { userId: "user-1" });
+    await workflow.execute({ type: "submit_application", idempotencyKey: "cancel-assessment-submit", jobTrackId: created.jobTrack.id, resumeId: "resume-cancel-assessment", submittedAt: "2026-09-01T15:00:00.000Z" }, { userId: "user-1" });
+    const invited = await workflow.execute({ type: "record_assessment_invite", idempotencyKey: "cancel-assessment-invite", jobTrackId: created.jobTrack.id, assessmentKind: "written_test", title: "在线笔试", timing: { type: "deadline", deadlineAt: "2026-09-12T15:59:00.000Z" }, receivedAt: "2026-09-02T06:00:00.000Z" }, { userId: "user-1" });
+    const cancelled = await workflow.execute({ type: "cancel_assessment", idempotencyKey: "cancel-assessment", assessmentId: invited.assessment.id, cancelledAt: "2026-09-03T06:00:00.000Z" }, { userId: "user-1" });
+    expect(cancelled).toMatchObject({ outcome: "assessment_cancelled", assessment: { status: "cancelled", cancelledAt: "2026-09-03T06:00:00.000Z" }, task: { id: invited.task?.id, cancelledAt: "2026-09-03T06:00:00.000Z" }, event: { kind: "AssessmentCancelled" } });
+  });
+
+  it("未投递岗位可删除，不会伪造结束历史", async () => {
+    const workflow = createInMemoryJobWorkflow();
+    const created = await workflow.execute({ type: "create_job_track", idempotencyKey: "delete-planned-create", companyName: "联想", roleName: "AI 产品经理", jobDescription: { text: "AI PC 产品" } }, { userId: "user-1" });
+    const deleted = await workflow.execute({ type: "delete_planned_job_track", idempotencyKey: "delete-planned", jobTrackId: created.jobTrack.id }, { userId: "user-1" });
+    expect(deleted).toEqual({ outcome: "job_track_deleted", jobTrackId: created.jobTrack.id });
+  });
+
+  it("编辑岗位上下文使用版本检查防止静默覆盖", async () => {
+    const workflow = createInMemoryJobWorkflow();
+    const created = await workflow.execute({ type: "create_job_track", idempotencyKey: "update-context-create", companyName: "华为", roleName: "AI 解决方案工程师", jobDescription: { text: "初始 JD" } }, { userId: "user-1" });
+    const updated = await workflow.execute({
+      type: "update_job_track_context",
+      idempotencyKey: "update-context",
+      jobTrackId: created.jobTrack.id,
+      version: created.jobTrack.version,
+      companyName: "华为技术有限公司",
+      roleName: "AI 解决方案工程师",
+      jobDescription: { text: "更新后的完整 JD" },
+      jobUrl: "https://career.example.com/job/1",
+    }, { userId: "user-1" });
+    expect(updated).toMatchObject({ outcome: "context_updated", jobTrack: { companyName: "华为技术有限公司", version: 2, jobUrl: "https://career.example.com/job/1" } });
+    await expect(workflow.execute({
+      type: "update_job_track_context",
+      idempotencyKey: "update-context-stale",
+      jobTrackId: created.jobTrack.id,
+      version: created.jobTrack.version,
+      companyName: "过期修改",
+      roleName: "AI 解决方案工程师",
+      jobDescription: { text: "过期 JD" },
+    }, { userId: "user-1" })).rejects.toThrow("CONFLICT");
+  });
+
+  it("保存面试转录会在必要时自动确认面试发生", async () => {
+    const workflow = createInMemoryJobWorkflow({ resumes: [{ id: "resume-transcript", userId: "user-1" }] });
+    const created = await workflow.execute({ type: "create_job_track", idempotencyKey: "transcript-create", companyName: "哔哩哔哩", roleName: "AI 产品经理", jobDescription: { text: "智能内容产品" } }, { userId: "user-1" });
+    await workflow.execute({ type: "submit_application", idempotencyKey: "transcript-submit", jobTrackId: created.jobTrack.id, resumeId: "resume-transcript", submittedAt: "2026-09-01T16:00:00.000Z" }, { userId: "user-1" });
+    const scheduled = await workflow.execute({ type: "schedule_interview", idempotencyKey: "transcript-schedule", jobTrackId: created.jobTrack.id, roundLabel: "一面", interviewType: "视频面试", startAt: "2026-09-13T02:00:00.000Z", endAt: "2026-09-13T03:00:00.000Z", receivedAt: "2026-09-02T07:00:00.000Z" }, { userId: "user-1" });
+    const saved = await workflow.execute({ type: "save_interview_transcript", idempotencyKey: "transcript-save", interviewId: scheduled.interview.id, transcriptText: "面试官：请介绍一下你的项目\n我：项目的核心目标是…", savedAt: "2026-09-13T04:00:00.000Z" }, { userId: "user-1" });
+    expect(saved).toMatchObject({ outcome: "transcript_saved", interview: { id: scheduled.interview.id, occurredAt: "2026-09-13T04:00:00.000Z" }, occurredEvent: { kind: "InterviewOccurred", payload: { confirmedBy: "transcript" } } });
   });
 });

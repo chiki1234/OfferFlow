@@ -76,6 +76,21 @@ function createMemoryTransaction(state: MemoryState): JobWorkflowTransaction {
       state.jobTracks.set(jobTrack.id, jobTrack);
       return jobTrack;
     },
+    async updateJobTrackContext(input) {
+      const jobTrack = state.jobTracks.get(input.jobTrackId);
+      if (!jobTrack || jobTrack.userId !== input.userId) return null;
+      if (jobTrack.version !== input.version) return null;
+      const updated = {
+        ...jobTrack,
+        companyName: input.companyName,
+        roleName: input.roleName,
+        jobUrl: input.jobUrl,
+        jobDescription: input.jobDescription,
+        version: jobTrack.version + 1,
+      };
+      state.jobTracks.set(updated.id, updated);
+      return updated;
+    },
     async findJobTrack(userId, jobTrackId) {
       const jobTrack = state.jobTracks.get(jobTrackId);
       return jobTrack?.userId === userId ? jobTrack : null;
@@ -129,6 +144,17 @@ function createMemoryTransaction(state: MemoryState): JobWorkflowTransaction {
       }
       return { assessment: completedAssessment, task: completedTask };
     },
+    async cancelAssessmentWithTask(input) {
+      const assessment = state.assessments.get(input.assessmentId);
+      const jobTrack = assessment ? state.jobTracks.get(assessment.jobTrackId) : null;
+      if (!assessment || jobTrack?.userId !== input.userId) throw new Error("NOT_FOUND: assessment was not found");
+      const cancelledAssessment = { ...assessment, status: "cancelled" as const, cancelledAt: input.cancelledAt };
+      state.assessments.set(cancelledAssessment.id, cancelledAssessment);
+      const task = [...state.tasks.values()].find((candidate) => candidate.assessmentId === assessment.id);
+      const cancelledTask = task ? { ...task, cancelledAt: input.cancelledAt } : null;
+      if (cancelledTask) state.tasks.set(cancelledTask.id, cancelledTask);
+      return { assessment: cancelledAssessment, task: cancelledTask };
+    },
     async insertInterview(interview) {
       state.interviews.set(interview.id, interview);
       return interview;
@@ -178,6 +204,14 @@ function createMemoryTransaction(state: MemoryState): JobWorkflowTransaction {
       state.interviews.set(reviewed.id, reviewed);
       return reviewed;
     },
+    async saveInterviewTranscript(input) {
+      const interview = state.interviews.get(input.interviewId);
+      const jobTrack = interview ? state.jobTracks.get(interview.jobTrackId) : null;
+      if (!interview || jobTrack?.userId !== input.userId) throw new Error("NOT_FOUND: interview was not found");
+      const saved = { ...interview, occurredAt: input.occurredAt, transcriptText: input.transcriptText };
+      state.interviews.set(saved.id, saved);
+      return saved;
+    },
     async insertTask(input) {
       state.tasks.set(input.task.id, input.task);
       return input.task;
@@ -187,6 +221,14 @@ function createMemoryTransaction(state: MemoryState): JobWorkflowTransaction {
       const jobTrack = task?.jobTrackId ? state.jobTracks.get(task.jobTrackId) : null;
       return task && jobTrack?.userId === userId ? task : null;
     },
+    async updateTask(input) {
+      const task = state.tasks.get(input.taskId);
+      const jobTrack = task?.jobTrackId ? state.jobTracks.get(task.jobTrackId) : null;
+      if (!task || jobTrack?.userId !== input.userId) throw new Error("NOT_FOUND: task was not found");
+      const updated = { ...task, title: input.title, deadlineAt: input.deadlineAt, interviewId: input.interviewId };
+      state.tasks.set(updated.id, updated);
+      return updated;
+    },
     async completeTask(input) {
       const task = state.tasks.get(input.taskId);
       const jobTrack = task?.jobTrackId ? state.jobTracks.get(task.jobTrackId) : null;
@@ -194,6 +236,14 @@ function createMemoryTransaction(state: MemoryState): JobWorkflowTransaction {
       const completed = { ...task, completedAt: input.completedAt };
       state.tasks.set(completed.id, completed);
       return completed;
+    },
+    async cancelTask(input) {
+      const task = state.tasks.get(input.taskId);
+      const jobTrack = task?.jobTrackId ? state.jobTracks.get(task.jobTrackId) : null;
+      if (!task || jobTrack?.userId !== input.userId) throw new Error("NOT_FOUND: task was not found");
+      const cancelled = { ...task, cancelledAt: input.cancelledAt };
+      state.tasks.set(cancelled.id, cancelled);
+      return cancelled;
     },
     async endJobTrack(input) {
       const jobTrack = state.jobTracks.get(input.jobTrackId);
@@ -210,6 +260,11 @@ function createMemoryTransaction(state: MemoryState): JobWorkflowTransaction {
         if (task.jobTrackId === ended.id && !task.completedAt && !task.cancelledAt) state.tasks.set(id, { ...task, cancelledAt: input.endedAt });
       }
       return ended;
+    },
+    async deleteJobTrack(userId, jobTrackId) {
+      const jobTrack = state.jobTracks.get(jobTrackId);
+      if (!jobTrack || jobTrack.userId !== userId) throw new Error("NOT_FOUND: job track was not found");
+      state.jobTracks.delete(jobTrackId);
     },
     async markApplicationSubmitted(input) {
       const jobTrack = state.jobTracks.get(input.jobTrackId);

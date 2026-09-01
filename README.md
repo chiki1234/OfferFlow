@@ -6,9 +6,13 @@
 
 - Next.js 16 + TypeScript + PostgreSQL/Drizzle 工程基础
 - `JobWorkflow.execute(command)` 业务动作 interface
-- 待投递、简历版本上传、投递、Deadline 测评与完成联动
-- 面试创建、改期、取消、发生确认和复盘闭环
+- 待投递、批量快速导入、岗位信息编辑、简历版本上传和投递
+- Deadline / 固定时间测评创建、完成和取消联动
+- 面试创建、改期、取消、发生确认、逐字稿和复盘闭环
+- 待办创建、完成、取消，以及岗位拒信 / 主动结束处理
 - 行动状态、逾期 / 等待较久标记、待复盘推导
+- Experience、Resume 关联、FAQ Block 批量解析和知识库维护
+- 日历时间冲突提示和通用进展 Timeline 记录
 - PostgreSQL schema、MinIO 存储和三份 migration
 - 真实数据驱动的工作台、岗位详情、周日历和 Timeline
 

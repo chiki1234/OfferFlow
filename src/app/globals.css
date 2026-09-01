@@ -362,6 +362,8 @@ a {
 .calendar-kind { color: var(--brand); font-size: 10px; font-weight: 800; letter-spacing: .12em; }
 .calendar-kind.assessment { color: #9a5f21; }
 .calendar-kind.task { color: #5f7167; }
+.calendar-item.conflict { border-color: #e4a491; }
+.conflict-label { margin-left: 8px; border-radius: 999px; background: #fff0ec; color: #a23d2c; padding: 4px 7px; font-size: 9px; font-weight: 800; }
 .job-action-state { color: var(--brand); }
 .job-attention { color: #b54b3b; }
 
@@ -550,6 +552,9 @@ a {
 .detail-main, .detail-action-stack { display: grid; gap: 18px; }
 .detail-section { padding: 24px; }
 .jd-copy { margin: 22px 0 0; white-space: pre-wrap; color: #4e5c54; font-size: 13px; line-height: 1.8; }
+.context-editor { margin-top: 20px; border-top: 1px solid var(--line); padding-top: 14px; }
+.context-editor summary { color: var(--brand); cursor: pointer; font-size: 11px; font-weight: 750; }
+.context-editor form { margin-top: 16px; }
 .detail-actions { position: sticky; top: 24px; }
 .detail-action-form + .detail-action-form { border-top: 1px solid var(--line); padding-top: 20px; }
 .detail-action-form h3 { margin: 0; font-size: 16px; }
@@ -597,6 +602,7 @@ a {
 .experience-card p { display: -webkit-box; overflow: hidden; margin: 13px 0 0; color: var(--muted); font-size: 12px; line-height: 1.65; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
 .knowledge-tools { align-self: start; padding: 24px; }
 .knowledge-form + .knowledge-form { margin-top: 24px; border-top: 1px solid var(--line); padding-top: 24px; }
+.knowledge-tools > .knowledge-form + .knowledge-form { margin-top: 24px; border-top: 1px solid var(--line); padding-top: 24px; }
 .knowledge-form h3 { margin: 0; font-size: 16px; }
 .parse-summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; border-radius: 10px; background: #eef4ef; padding: 10px 12px; font-size: 11px; }
 .parse-summary span { color: #a15b2b; }

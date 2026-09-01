@@ -33,9 +33,9 @@ export default async function CalendarPage() {
       ) : (
         <section className="calendar-list" aria-label="本周日程">
           {view.items.map((item) => (
-            <article className="surface-card calendar-item" key={`${item.sourceType}-${item.id}`}>
+            <article className={`surface-card calendar-item${item.hasConflict ? " conflict" : ""}`} key={`${item.sourceType}-${item.id}`}>
               <time>{formatDay(item.startAt)}<strong>{formatTime(item.startAt, item.isDeadline)}</strong></time>
-              <div><span className={`calendar-kind ${item.sourceType}`}>{kindLabel(item.sourceType)}</span><h2>{item.title}</h2><p>{item.companyName} · {item.roleName}</p></div>
+              <div><span className={`calendar-kind ${item.sourceType}`}>{kindLabel(item.sourceType)}</span>{item.hasConflict && <span className="conflict-label">时间冲突</span>}<h2>{item.title}</h2><p>{item.companyName} · {item.roleName}</p></div>
             </article>
           ))}
         </section>

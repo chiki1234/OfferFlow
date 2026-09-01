@@ -108,6 +108,7 @@ export async function getInterviewKnowledgeDetail(userId: string, interviewId: s
     status: interviews.status,
     occurredAt: interviews.occurredAt,
     reviewedAt: interviews.reviewedAt,
+    transcriptText: interviews.transcriptText,
     jobTrackId: jobTracks.id,
     companyName: jobTracks.companyName,
     roleName: jobTracks.roleName,

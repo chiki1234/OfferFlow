@@ -13,7 +13,7 @@ services:
       timeout: 5s
       retries: 10
     volumes:
-      - ./.data/postgres:/var/lib/postgresql/data
+      - ./.data/postgres:/var/lib/postgresql
 
   minio:
     image: minio/minio:latest

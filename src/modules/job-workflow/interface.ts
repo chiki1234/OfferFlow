@@ -16,6 +16,17 @@ export type CreateJobTrackCommand = {
   jobUrl?: string;
 };
 
+export type UpdateJobTrackContextCommand = {
+  type: "update_job_track_context";
+  idempotencyKey: string;
+  jobTrackId: string;
+  version: number;
+  companyName: string;
+  roleName: string;
+  jobDescription: JobDescriptionInput;
+  jobUrl?: string;
+};
+
 export type SubmitApplicationCommand = {
   type: "submit_application";
   idempotencyKey: string;
@@ -43,6 +54,13 @@ export type CompleteAssessmentCommand = {
   idempotencyKey: string;
   assessmentId: string;
   completedAt: string;
+};
+
+export type CancelAssessmentCommand = {
+  type: "cancel_assessment";
+  idempotencyKey: string;
+  assessmentId: string;
+  cancelledAt: string;
 };
 
 export type ScheduleInterviewCommand = {
@@ -90,6 +108,14 @@ export type CompleteInterviewReviewCommand = {
   reviewedAt: string;
 };
 
+export type SaveInterviewTranscriptCommand = {
+  type: "save_interview_transcript";
+  idempotencyKey: string;
+  interviewId: string;
+  transcriptText: string;
+  savedAt: string;
+};
+
 export type CreateTaskCommand = {
   type: "create_task";
   idempotencyKey: string;
@@ -100,11 +126,27 @@ export type CreateTaskCommand = {
   deadlineAt?: string;
 };
 
+export type UpdateTaskCommand = {
+  type: "update_task";
+  idempotencyKey: string;
+  taskId: string;
+  title: string;
+  deadlineAt?: string;
+  interviewId?: string | null;
+};
+
 export type CompleteTaskCommand = {
   type: "complete_task";
   idempotencyKey: string;
   taskId: string;
   completedAt: string;
+};
+
+export type CancelTaskCommand = {
+  type: "cancel_task";
+  idempotencyKey: string;
+  taskId: string;
+  cancelledAt: string;
 };
 
 export type RecordRejectionCommand = {
@@ -130,21 +172,42 @@ export type QuickImportJobTracksCommand = {
   entries: Array<{ companyName: string; roleName: string }>;
 };
 
+export type RecordGenericProgressCommand = {
+  type: "record_generic_progress";
+  idempotencyKey: string;
+  jobTrackId: string;
+  summary: string;
+  occurredAt: string;
+};
+
+export type DeletePlannedJobTrackCommand = {
+  type: "delete_planned_job_track";
+  idempotencyKey: string;
+  jobTrackId: string;
+};
+
 export type JobCommand =
   | CreateJobTrackCommand
+  | UpdateJobTrackContextCommand
   | SubmitApplicationCommand
   | RecordAssessmentInviteCommand
   | CompleteAssessmentCommand
+  | CancelAssessmentCommand
   | ScheduleInterviewCommand
   | RescheduleInterviewCommand
   | CancelInterviewCommand
   | ConfirmInterviewOccurredCommand
   | CompleteInterviewReviewCommand
+  | SaveInterviewTranscriptCommand
   | CreateTaskCommand
+  | UpdateTaskCommand
   | CompleteTaskCommand
+  | CancelTaskCommand
   | RecordRejectionCommand
   | EndJobTrackCommand
-  | QuickImportJobTracksCommand;
+  | QuickImportJobTracksCommand
+  | RecordGenericProgressCommand
+  | DeletePlannedJobTrackCommand;
 
 export type JobTrackView = {
   id: string;
@@ -155,6 +218,7 @@ export type JobTrackView = {
   resumeId: string | null;
   submittedAt: string | null;
   createdAt: string;
+  version: number;
 };
 
 export type JobEventView = {
@@ -163,13 +227,15 @@ export type JobEventView = {
     | "ApplicationSubmitted"
     | "AssessmentInvited"
     | "AssessmentCompleted"
+    | "AssessmentCancelled"
     | "InterviewInvited"
     | "InterviewRescheduled"
     | "InterviewCancelled"
     | "InterviewOccurred"
     | "InterviewReviewed"
     | "RejectionReceived"
-    | "JobTrackEnded";
+    | "JobTrackEnded"
+    | "GenericProgress";
   jobTrackId: string;
   subjectType: "job_track" | "assessment" | "interview" | "task";
   subjectId: string;
@@ -214,12 +280,15 @@ export type InterviewView = {
   cancelledAt: string | null;
   occurredAt: string | null;
   reviewedAt: string | null;
+  transcriptText: string | null;
 };
 
 export type CreateJobTrackResult = {
   outcome: "created";
   jobTrack: JobTrackView;
 };
+
+export type UpdateJobTrackContextResult = { outcome: "context_updated"; jobTrack: JobTrackView };
 
 export type SubmitApplicationResult = {
   outcome: "submitted";
@@ -236,6 +305,13 @@ export type RecordAssessmentInviteResult = {
 
 export type CompleteAssessmentResult = {
   outcome: "assessment_completed";
+  assessment: AssessmentView;
+  task: TaskView | null;
+  event: JobEventView;
+};
+
+export type CancelAssessmentResult = {
+  outcome: "assessment_cancelled";
   assessment: AssessmentView;
   task: TaskView | null;
   event: JobEventView;
@@ -272,35 +348,56 @@ export type CompleteInterviewReviewResult = {
   event: JobEventView;
 };
 
+export type SaveInterviewTranscriptResult = {
+  outcome: "transcript_saved";
+  interview: InterviewView;
+  occurredEvent: JobEventView | null;
+};
+
 export type CreateTaskResult = { outcome: "task_created"; task: TaskView };
+export type UpdateTaskResult = { outcome: "task_updated"; task: TaskView };
 export type CompleteTaskResult = { outcome: "task_completed"; task: TaskView };
+export type CancelTaskResult = { outcome: "task_cancelled"; task: TaskView };
 export type EndJobTrackResult = { outcome: "job_track_ended"; jobTrack: JobTrackView; event: JobEventView };
 export type QuickImportJobTracksResult = { outcome: "job_tracks_imported"; jobTracks: JobTrackView[] };
+export type RecordGenericProgressResult = { outcome: "progress_recorded"; event: JobEventView };
+export type DeletePlannedJobTrackResult = { outcome: "job_track_deleted"; jobTrackId: string };
 
 export type JobCommandResult =
   | CreateJobTrackResult
+  | UpdateJobTrackContextResult
   | SubmitApplicationResult
   | RecordAssessmentInviteResult
   | CompleteAssessmentResult
+  | CancelAssessmentResult
   | ScheduleInterviewResult
   | RescheduleInterviewResult
   | CancelInterviewResult
   | ConfirmInterviewOccurredResult
   | CompleteInterviewReviewResult
+  | SaveInterviewTranscriptResult
   | CreateTaskResult
+  | UpdateTaskResult
   | CompleteTaskResult
+  | CancelTaskResult
   | EndJobTrackResult
-  | QuickImportJobTracksResult;
+  | QuickImportJobTracksResult
+  | RecordGenericProgressResult
+  | DeletePlannedJobTrackResult;
 
 export type JobCommandResultFor<TCommand extends JobCommand> =
   TCommand extends CreateJobTrackCommand
     ? CreateJobTrackResult
+    : TCommand extends UpdateJobTrackContextCommand
+      ? UpdateJobTrackContextResult
     : TCommand extends SubmitApplicationCommand
       ? SubmitApplicationResult
       : TCommand extends RecordAssessmentInviteCommand
         ? RecordAssessmentInviteResult
         : TCommand extends CompleteAssessmentCommand
           ? CompleteAssessmentResult
+          : TCommand extends CancelAssessmentCommand
+            ? CancelAssessmentResult
           : TCommand extends ScheduleInterviewCommand
             ? ScheduleInterviewResult
             : TCommand extends RescheduleInterviewCommand
@@ -311,17 +408,27 @@ export type JobCommandResultFor<TCommand extends JobCommand> =
                   ? ConfirmInterviewOccurredResult
                   : TCommand extends CompleteInterviewReviewCommand
                     ? CompleteInterviewReviewResult
+                    : TCommand extends SaveInterviewTranscriptCommand
+                      ? SaveInterviewTranscriptResult
                     : TCommand extends CreateTaskCommand
                       ? CreateTaskResult
-                      : TCommand extends CompleteTaskCommand
-                        ? CompleteTaskResult
+                      : TCommand extends UpdateTaskCommand
+                        ? UpdateTaskResult
+                        : TCommand extends CompleteTaskCommand
+                          ? CompleteTaskResult
+                          : TCommand extends CancelTaskCommand
+                            ? CancelTaskResult
                         : TCommand extends RecordRejectionCommand
                           ? EndJobTrackResult
                           : TCommand extends EndJobTrackCommand
                             ? EndJobTrackResult
                             : TCommand extends QuickImportJobTracksCommand
                               ? QuickImportJobTracksResult
-                              : never;
+                              : TCommand extends RecordGenericProgressCommand
+                                ? RecordGenericProgressResult
+                                : TCommand extends DeletePlannedJobTrackCommand
+                                  ? DeletePlannedJobTrackResult
+                                  : never;
 
 export interface JobWorkflow {
   execute<TCommand extends JobCommand>(

@@ -1,6 +1,8 @@
-import "dotenv/config";
+import { config } from "dotenv";
 import { createDatabase } from "../src/db/client";
 import { users } from "../src/db/schema";
+
+config({ path: [".env.local", ".env"] });
 
 const databaseUrl = process.env.DATABASE_URL;
 const userId = process.env.APP_USER_ID;

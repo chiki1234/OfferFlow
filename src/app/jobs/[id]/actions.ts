@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { z } from "zod";
 import { getJobWorkflow } from "@/modules/job-workflow/composition";
 import { uploadResumeVersion } from "@/modules/resume-library/service";
@@ -9,7 +10,7 @@ import { getCurrentActor } from "@/shared/actor/current-actor";
 export type JobDetailActionState = { error: string | null; success: string | null };
 
 const baseSchema = z.object({
-  intent: z.enum(["submit", "assessment", "interview", "task", "complete_task", "complete_assessment", "cancel_interview", "complete_interview_review", "record_rejection", "end_job_track", "upload_resume"]),
+  intent: z.enum(["submit", "update_context", "assessment", "interview", "reschedule_interview", "save_interview_transcript", "task", "update_task", "complete_task", "cancel_task", "complete_assessment", "cancel_assessment", "cancel_interview", "confirm_interview_occurred", "complete_interview_review", "record_rejection", "end_job_track", "record_generic_progress", "delete_planned_job_track", "upload_resume"]),
   idempotencyKey: z.string().min(8),
   jobTrackId: z.uuid(),
 });
@@ -29,6 +30,28 @@ export async function jobDetailAction(
     const workflow = getJobWorkflow();
     const actor = getCurrentActor();
     switch (base.data.intent) {
+      case "update_context": {
+        const data = z.object({
+          version: z.coerce.number().int().positive(), companyName: z.string().trim().min(1).max(255),
+          roleName: z.string().trim().min(1).max(255), jobDescription: z.string(),
+          jobUrl: z.union([z.url(), z.literal("")]),
+        }).parse({
+          version: formData.get("version"), companyName: formData.get("companyName"), roleName: formData.get("roleName"),
+          jobDescription: formData.get("jobDescription"), jobUrl: formData.get("jobUrl"),
+        });
+        await workflow.execute({
+          type: "update_job_track_context",
+          idempotencyKey: base.data.idempotencyKey,
+          jobTrackId: base.data.jobTrackId,
+          version: data.version,
+          companyName: data.companyName,
+          roleName: data.roleName,
+          jobDescription: { text: data.jobDescription },
+          jobUrl: data.jobUrl || undefined,
+        }, actor);
+        revalidateWorkspace(base.data.jobTrackId);
+        return { error: null, success: "岗位上下文已更新。" };
+      }
       case "upload_resume": {
         const file = formData.get("resumeFile");
         if (!(file instanceof File)) return { error: "请选择简历文件。", success: null };
@@ -58,19 +81,25 @@ export async function jobDetailAction(
         const data = z.object({
           assessmentKind: z.enum(["assessment", "written_test"]),
           title: z.string().trim().min(1).max(255),
-          deadlineAt: z.string().min(1),
+          timingType: z.enum(["deadline", "fixed_slot"]),
+          deadlineAt: z.string().optional(), startAt: z.string().optional(), endAt: z.string().optional(),
           receivedAt: z.string().min(1),
         }).parse({
           assessmentKind: formData.get("assessmentKind"), title: formData.get("title"),
-          deadlineAt: formData.get("deadlineAt"), receivedAt: formData.get("receivedAt"),
+          timingType: formData.get("timingType"), deadlineAt: formData.get("deadlineAt") || undefined,
+          startAt: formData.get("startAt") || undefined, endAt: formData.get("endAt") || undefined,
+          receivedAt: formData.get("receivedAt"),
         });
+        const timing = data.timingType === "deadline"
+          ? { type: "deadline" as const, deadlineAt: toIso(z.string().min(1).parse(data.deadlineAt)) }
+          : { type: "fixed_slot" as const, startAt: toIso(z.string().min(1).parse(data.startAt)), endAt: toIso(z.string().min(1).parse(data.endAt)) };
         await workflow.execute({
           type: "record_assessment_invite",
           idempotencyKey: base.data.idempotencyKey,
           jobTrackId: base.data.jobTrackId,
           assessmentKind: data.assessmentKind,
           title: data.title,
-          timing: { type: "deadline", deadlineAt: toIso(data.deadlineAt) },
+          timing,
           receivedAt: toIso(data.receivedAt),
         }, actor);
         revalidateWorkspace(base.data.jobTrackId);
@@ -99,6 +128,33 @@ export async function jobDetailAction(
         revalidateWorkspace(base.data.jobTrackId);
         return { error: null, success: "已安排面试。" };
       }
+      case "reschedule_interview": {
+        const data = z.object({ interviewId: z.uuid(), startAt: z.string().min(1), endAt: z.string().min(1) }).parse({ interviewId: formData.get("interviewId"), startAt: formData.get("startAt"), endAt: formData.get("endAt") });
+        await workflow.execute({
+          type: "reschedule_interview",
+          idempotencyKey: base.data.idempotencyKey,
+          interviewId: data.interviewId,
+          startAt: toIso(data.startAt),
+          endAt: toIso(data.endAt),
+          changedAt: new Date().toISOString(),
+        }, actor);
+        revalidateWorkspace(base.data.jobTrackId);
+        revalidatePath(`/interviews/${data.interviewId}`);
+        return { error: null, success: "面试时间已更新。" };
+      }
+      case "save_interview_transcript": {
+        const interviewId = z.uuid().parse(formData.get("interviewId"));
+        await workflow.execute({
+          type: "save_interview_transcript",
+          idempotencyKey: base.data.idempotencyKey,
+          interviewId,
+          transcriptText: z.string().trim().min(1).parse(formData.get("transcriptText")),
+          savedAt: new Date().toISOString(),
+        }, actor);
+        revalidateWorkspace(base.data.jobTrackId);
+        revalidatePath(`/interviews/${interviewId}`);
+        return { error: null, success: "面试转录已保存。" };
+      }
       case "task": {
         const data = z.object({ title: z.string().trim().min(1).max(255), deadlineAt: z.string().min(1) }).parse({ title: formData.get("title"), deadlineAt: formData.get("deadlineAt") });
         await workflow.execute({
@@ -112,6 +168,29 @@ export async function jobDetailAction(
         revalidateWorkspace(base.data.jobTrackId);
         return { error: null, success: "待办已创建。" };
       }
+      case "update_task": {
+        const data = z.object({
+          taskId: z.uuid(),
+          title: z.string().trim().min(1).max(255),
+          deadlineAt: z.string().optional(),
+          interviewId: z.union([z.uuid(), z.literal("")]),
+        }).parse({
+          taskId: formData.get("taskId"),
+          title: formData.get("title"),
+          deadlineAt: formData.get("deadlineAt") || undefined,
+          interviewId: formData.get("interviewId") || "",
+        });
+        await workflow.execute({
+          type: "update_task",
+          idempotencyKey: base.data.idempotencyKey,
+          taskId: data.taskId,
+          title: data.title,
+          deadlineAt: data.deadlineAt ? toIso(data.deadlineAt) : undefined,
+          interviewId: data.interviewId || null,
+        }, actor);
+        revalidateWorkspace(base.data.jobTrackId);
+        return { error: null, success: "待办已更新。" };
+      }
       case "complete_task": {
         await workflow.execute({
           type: "complete_task",
@@ -121,6 +200,16 @@ export async function jobDetailAction(
         }, actor);
         revalidateWorkspace(base.data.jobTrackId);
         return { error: null, success: "待办已完成。" };
+      }
+      case "cancel_task": {
+        await workflow.execute({
+          type: "cancel_task",
+          idempotencyKey: base.data.idempotencyKey,
+          taskId: z.uuid().parse(formData.get("taskId")),
+          cancelledAt: new Date().toISOString(),
+        }, actor);
+        revalidateWorkspace(base.data.jobTrackId);
+        return { error: null, success: "待办已取消。" };
       }
       case "complete_assessment": {
         const assessmentId = z.uuid().parse(formData.get("assessmentId"));
@@ -133,6 +222,16 @@ export async function jobDetailAction(
         revalidateWorkspace(base.data.jobTrackId);
         return { error: null, success: "测评已完成。" };
       }
+      case "cancel_assessment": {
+        await workflow.execute({
+          type: "cancel_assessment",
+          idempotencyKey: base.data.idempotencyKey,
+          assessmentId: z.uuid().parse(formData.get("assessmentId")),
+          cancelledAt: new Date().toISOString(),
+        }, actor);
+        revalidateWorkspace(base.data.jobTrackId);
+        return { error: null, success: "测评已取消。" };
+      }
       case "cancel_interview": {
         const interviewId = z.uuid().parse(formData.get("interviewId"));
         await workflow.execute({
@@ -143,6 +242,18 @@ export async function jobDetailAction(
         }, actor);
         revalidateWorkspace(base.data.jobTrackId);
         return { error: null, success: "面试已取消。" };
+      }
+      case "confirm_interview_occurred": {
+        const interviewId = z.uuid().parse(formData.get("interviewId"));
+        await workflow.execute({
+          type: "confirm_interview_occurred",
+          idempotencyKey: base.data.idempotencyKey,
+          interviewId,
+          occurredAt: new Date().toISOString(),
+        }, actor);
+        revalidateWorkspace(base.data.jobTrackId);
+        revalidatePath(`/interviews/${interviewId}`);
+        return { error: null, success: "已确认面试发生。" };
       }
       case "complete_interview_review": {
         const interviewId = z.uuid().parse(formData.get("interviewId"));
@@ -177,11 +288,37 @@ export async function jobDetailAction(
         revalidateWorkspace(base.data.jobTrackId);
         return { error: null, success: "求职推进已结束。" };
       }
+      case "record_generic_progress": {
+        await workflow.execute({
+          type: "record_generic_progress",
+          idempotencyKey: base.data.idempotencyKey,
+          jobTrackId: base.data.jobTrackId,
+          summary: z.string().trim().min(1).max(2000).parse(formData.get("summary")),
+          occurredAt: new Date().toISOString(),
+        }, actor);
+        revalidateWorkspace(base.data.jobTrackId);
+        return { error: null, success: "进展已记录。" };
+      }
+      case "delete_planned_job_track": {
+        await workflow.execute({
+          type: "delete_planned_job_track",
+          idempotencyKey: base.data.idempotencyKey,
+          jobTrackId: base.data.jobTrackId,
+        }, actor);
+        revalidatePath("/");
+        revalidatePath("/jobs");
+        redirect("/jobs?tab=planned");
+      }
     }
   } catch (error) {
+    if (isRedirectError(error)) throw error;
     console.error("Job detail action failed", error);
     return { error: error instanceof z.ZodError ? "请检查输入内容。" : "操作失败，请重试。", success: null };
   }
+}
+
+function isRedirectError(error: unknown): boolean {
+  return Boolean(error && typeof error === "object" && "digest" in error && String(error.digest).startsWith("NEXT_REDIRECT"));
 }
 
 function toIso(value: string): string {

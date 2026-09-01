@@ -2,6 +2,7 @@ import { and, desc, eq, sql } from "drizzle-orm";
 import type { AppDatabase } from "@/db/client";
 import { assessments, events, interviews, jobDescriptions, jobTracks, resumes, tasks } from "@/db/schema";
 import { deriveJobTrackStatus, type JobTrackFacts } from "./derive-job-track-status";
+import { markCalendarConflicts } from "./calendar-conflicts";
 import type {
   CalendarItem,
   DashboardActionItem,
@@ -100,6 +101,7 @@ function createLoaders(db: AppDatabase) {
         meetingUrl: interviews.meetingUrl,
         notes: interviews.notes,
         cancelledAt: interviews.cancelledAt,
+        transcriptText: interviews.transcriptText,
       }).from(interviews)
         .innerJoin(jobTracks, eq(jobTracks.id, interviews.jobTrackId))
         .where(eq(jobTracks.userId, userId));
@@ -141,6 +143,7 @@ async function readJobTrackDetail(
       jobUrl: jobTracks.jobUrl,
       descriptionText: jobDescriptions.textContent,
       lastProgressAt: sql<Date | null>`max(${events.occurredAt})`,
+      version: jobTracks.version,
     }).from(jobTracks)
       .leftJoin(jobDescriptions, eq(jobDescriptions.jobTrackId, jobTracks.id))
       .leftJoin(events, eq(events.jobTrackId, jobTracks.id))
@@ -179,6 +182,7 @@ async function readJobTrackDetail(
       lastProgressAt: job.lastProgressAt?.toISOString() ?? null,
       actionState: status.actionState,
       attentionFlags: status.attentionFlags,
+      version: job.version,
       jobUrl: job.jobUrl,
       jobDescription: job.descriptionText,
     },
@@ -208,6 +212,7 @@ async function readJobTrackDetail(
       cancelledAt: row.cancelledAt?.toISOString() ?? null,
       occurredAt: row.occurredAt?.toISOString() ?? null,
       reviewedAt: row.reviewedAt?.toISOString() ?? null,
+      transcriptText: row.transcriptText,
     })),
     tasks: taskRows.map((row) => ({
       id: row.id,
@@ -251,6 +256,7 @@ async function readJobTracks(
       resumeId: jobTracks.resumeId,
       descriptionText: jobDescriptions.textContent,
       lastProgressAt: sql<Date | null>`max(${events.occurredAt})`,
+      version: jobTracks.version,
     }).from(jobTracks)
       .leftJoin(jobDescriptions, eq(jobDescriptions.jobTrackId, jobTracks.id))
       .leftJoin(events, eq(events.jobTrackId, jobTracks.id))
@@ -279,6 +285,7 @@ async function readJobTracks(
       lastProgressAt: row.lastProgressAt?.toISOString() ?? null,
       actionState: status.actionState,
       attentionFlags: status.attentionFlags,
+      version: row.version,
     } satisfies JobTrackListItem;
   });
   return { type: "job_track_list", items, counts };
@@ -386,7 +393,7 @@ function buildCalendarItems(
   startAt: Date,
   endAt: Date,
 ): CalendarItem[] {
-  return [
+  const items: CalendarItem[] = [
     ...interviewRows.filter((row) => row.status === "scheduled").map((row) => ({
       id: row.id,
       sourceType: "interview" as const,
@@ -397,6 +404,7 @@ function buildCalendarItems(
       startAt: row.startAt.toISOString(),
       endAt: row.endAt.toISOString(),
       isDeadline: false,
+      hasConflict: false,
     })),
     ...assessmentRows.filter((row) => row.status === "pending").map((row) => ({
       id: row.id,
@@ -408,6 +416,7 @@ function buildCalendarItems(
       startAt: requireDate(row.timingType === "deadline" ? row.deadlineAt : row.startAt).toISOString(),
       endAt: row.timingType === "fixed_slot" ? requireDate(row.endAt).toISOString() : null,
       isDeadline: row.timingType === "deadline",
+      hasConflict: false,
     })),
     ...taskRows.filter((row) => row.kind !== "assessment" && !row.completedAt && !row.cancelledAt && row.deadlineAt).map((row) => ({
       id: row.id,
@@ -419,11 +428,13 @@ function buildCalendarItems(
       startAt: (row.deadlineAt as Date).toISOString(),
       endAt: null,
       isDeadline: true,
+      hasConflict: false,
     })),
   ].filter((item) => {
     const itemTime = new Date(item.startAt);
     return itemTime >= startAt && itemTime < endAt;
   }).sort((left, right) => left.startAt.localeCompare(right.startAt));
+  return markCalendarConflicts(items);
 }
 
 function parseNow(value?: string): Date {

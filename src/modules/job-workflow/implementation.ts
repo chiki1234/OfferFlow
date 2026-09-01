@@ -3,6 +3,8 @@ import type {
   ActorContext,
   CancelInterviewCommand,
   CancelInterviewResult,
+  CancelAssessmentCommand,
+  CancelAssessmentResult,
   CompleteAssessmentCommand,
   CompleteAssessmentResult,
   CompleteInterviewReviewCommand,
@@ -11,8 +13,14 @@ import type {
   ConfirmInterviewOccurredResult,
   CompleteTaskCommand,
   CompleteTaskResult,
+  CancelTaskCommand,
+  CancelTaskResult,
   CreateTaskCommand,
   CreateTaskResult,
+  UpdateTaskCommand,
+  UpdateTaskResult,
+  DeletePlannedJobTrackCommand,
+  DeletePlannedJobTrackResult,
   EndJobTrackResult,
   EndJobTrackCommand,
   CreateJobTrackCommand,
@@ -26,12 +34,18 @@ import type {
   RecordRejectionCommand,
   QuickImportJobTracksCommand,
   QuickImportJobTracksResult,
+  RecordGenericProgressCommand,
+  RecordGenericProgressResult,
   RescheduleInterviewCommand,
   RescheduleInterviewResult,
   ScheduleInterviewCommand,
   ScheduleInterviewResult,
+  SaveInterviewTranscriptCommand,
+  SaveInterviewTranscriptResult,
   SubmitApplicationCommand,
   SubmitApplicationResult,
+  UpdateJobTrackContextCommand,
+  UpdateJobTrackContextResult,
 } from "./interface";
 import type { JobWorkflowStore, JobWorkflowTransaction, StoredJobTrack } from "./store";
 
@@ -86,12 +100,16 @@ async function executeCommand(
   switch (command.type) {
     case "create_job_track":
       return executeCreateJobTrack(command, context, transaction, generateId, now);
+    case "update_job_track_context":
+      return executeUpdateJobTrackContext(command, context, transaction);
     case "submit_application":
       return executeSubmitApplication(command, context, transaction, generateId);
     case "record_assessment_invite":
       return executeRecordAssessmentInvite(command, context, transaction, generateId);
     case "complete_assessment":
       return executeCompleteAssessment(command, context, transaction, generateId);
+    case "cancel_assessment":
+      return executeCancelAssessment(command, context, transaction, generateId);
     case "schedule_interview":
       return executeScheduleInterview(command, context, transaction, generateId);
     case "reschedule_interview":
@@ -102,17 +120,138 @@ async function executeCommand(
       return executeConfirmInterviewOccurred(command, context, transaction, generateId);
     case "complete_interview_review":
       return executeCompleteInterviewReview(command, context, transaction, generateId);
+    case "save_interview_transcript":
+      return executeSaveInterviewTranscript(command, context, transaction, generateId);
     case "create_task":
       return executeCreateTask(command, context, transaction, generateId);
+    case "update_task":
+      return executeUpdateTask(command, context, transaction);
     case "complete_task":
       return executeCompleteTask(command, context, transaction);
+    case "cancel_task":
+      return executeCancelTask(command, context, transaction);
     case "record_rejection":
       return executeRecordRejection(command, context, transaction, generateId);
     case "end_job_track":
       return executeEndJobTrack(command, context, transaction, generateId);
     case "quick_import_job_tracks":
       return executeQuickImportJobTracks(command, context, transaction, generateId, now);
+    case "record_generic_progress":
+      return executeRecordGenericProgress(command, context, transaction, generateId);
+    case "delete_planned_job_track":
+      return executeDeletePlannedJobTrack(command, context, transaction);
   }
+}
+
+async function executeCancelTask(
+  command: CancelTaskCommand,
+  context: ActorContext,
+  transaction: JobWorkflowTransaction,
+): Promise<CancelTaskResult> {
+  const existing = await transaction.findTask(context.userId, command.taskId);
+  if (!existing) throw new Error("NOT_FOUND: task was not found");
+  if (existing.kind === "assessment") throw new Error("CONFLICT: assessment task must be cancelled through cancel_assessment");
+  if (existing.completedAt || existing.cancelledAt) throw new Error("CONFLICT: only an open task can be cancelled");
+  const task = await transaction.cancelTask({ userId: context.userId, taskId: existing.id, cancelledAt: parseTimestamp(command.cancelledAt, "cancelledAt") });
+  return { outcome: "task_cancelled", task };
+}
+
+async function executeSaveInterviewTranscript(
+  command: SaveInterviewTranscriptCommand,
+  context: ActorContext,
+  transaction: JobWorkflowTransaction,
+  generateId: () => string,
+): Promise<SaveInterviewTranscriptResult> {
+  const existing = await transaction.findInterview(context.userId, command.interviewId);
+  if (!existing) throw new Error("NOT_FOUND: interview was not found");
+  if (existing.status === "cancelled") throw new Error("CONFLICT: cancelled interview cannot receive a transcript");
+  const transcriptText = command.transcriptText.trim();
+  if (!transcriptText) throw new Error("VALIDATION_ERROR: transcript text is required");
+  const savedAt = parseTimestamp(command.savedAt, "savedAt");
+  const occurredAt = existing.occurredAt ?? savedAt;
+  const interview = await transaction.saveInterviewTranscript({
+    userId: context.userId, interviewId: existing.id, transcriptText, occurredAt, savedAt,
+  });
+  const occurredEvent = existing.occurredAt ? null : await transaction.insertEvent({
+    id: generateId(), userId: context.userId, actionId: `${command.idempotencyKey}:occurred`,
+    kind: "InterviewOccurred", jobTrackId: interview.jobTrackId,
+    subjectType: "interview", subjectId: interview.id, occurredAt,
+    payload: { confirmedBy: "transcript" },
+  });
+  return { outcome: "transcript_saved", interview, occurredEvent };
+}
+
+async function executeUpdateJobTrackContext(
+  command: UpdateJobTrackContextCommand,
+  context: ActorContext,
+  transaction: JobWorkflowTransaction,
+): Promise<UpdateJobTrackContextResult> {
+  const existing = await transaction.findJobTrack(context.userId, command.jobTrackId);
+  if (!existing) throw new Error("NOT_FOUND: job track was not found");
+  const companyName = command.companyName.trim();
+  const roleName = command.roleName.trim();
+  const text = command.jobDescription.text?.trim() || null;
+  const imageAssetIds = command.jobDescription.imageAssetIds ?? [];
+  if (!companyName || !roleName) throw new Error("VALIDATION_ERROR: companyName and roleName are required");
+  if (!text && imageAssetIds.length === 0 && existing.createdVia !== "quick_import") throw new Error("VALIDATION_ERROR: jobDescription requires text or an image");
+  const updated = await transaction.updateJobTrackContext({
+    userId: context.userId, jobTrackId: existing.id, version: command.version,
+    companyName, roleName, jobUrl: command.jobUrl?.trim() || null,
+    jobDescription: { text, imageAssetIds },
+  });
+  if (!updated) throw new Error("CONFLICT: job track was changed by another action");
+  return { outcome: "context_updated", jobTrack: toJobTrackView(updated) };
+}
+
+async function executeDeletePlannedJobTrack(
+  command: DeletePlannedJobTrackCommand,
+  context: ActorContext,
+  transaction: JobWorkflowTransaction,
+): Promise<DeletePlannedJobTrackResult> {
+  const jobTrack = await transaction.findJobTrack(context.userId, command.jobTrackId);
+  if (!jobTrack) throw new Error("NOT_FOUND: job track was not found");
+  if (jobTrack.lifecycle !== "planned") throw new Error("CONFLICT: only a planned job track can be deleted");
+  await transaction.deleteJobTrack(context.userId, jobTrack.id);
+  return { outcome: "job_track_deleted", jobTrackId: jobTrack.id };
+}
+
+async function executeCancelAssessment(
+  command: CancelAssessmentCommand,
+  context: ActorContext,
+  transaction: JobWorkflowTransaction,
+  generateId: () => string,
+): Promise<CancelAssessmentResult> {
+  const existing = await transaction.findAssessmentWithTask(context.userId, command.assessmentId);
+  if (!existing) throw new Error("NOT_FOUND: assessment was not found");
+  if (existing.assessment.status !== "pending") throw new Error("CONFLICT: only a pending assessment can be cancelled");
+  const cancelledAt = parseTimestamp(command.cancelledAt, "cancelledAt");
+  const cancelled = await transaction.cancelAssessmentWithTask({ userId: context.userId, assessmentId: existing.assessment.id, cancelledAt });
+  const event = await transaction.insertEvent({
+    id: generateId(), userId: context.userId, actionId: command.idempotencyKey,
+    kind: "AssessmentCancelled", jobTrackId: cancelled.assessment.jobTrackId,
+    subjectType: "assessment", subjectId: cancelled.assessment.id, occurredAt: cancelledAt, payload: {},
+  });
+  return { outcome: "assessment_cancelled", assessment: cancelled.assessment, task: cancelled.task, event };
+}
+
+async function executeRecordGenericProgress(
+  command: RecordGenericProgressCommand,
+  context: ActorContext,
+  transaction: JobWorkflowTransaction,
+  generateId: () => string,
+): Promise<RecordGenericProgressResult> {
+  const jobTrack = await transaction.findJobTrack(context.userId, command.jobTrackId);
+  if (!jobTrack) throw new Error("NOT_FOUND: job track was not found");
+  if (jobTrack.lifecycle !== "active") throw new Error("CONFLICT: progress can only be recorded on an active job track");
+  const summary = command.summary.trim();
+  if (!summary) throw new Error("VALIDATION_ERROR: progress summary is required");
+  const event = await transaction.insertEvent({
+    id: generateId(), userId: context.userId, actionId: command.idempotencyKey,
+    kind: "GenericProgress", jobTrackId: jobTrack.id, subjectType: "job_track",
+    subjectId: jobTrack.id, occurredAt: parseTimestamp(command.occurredAt, "occurredAt"),
+    payload: { summary },
+  });
+  return { outcome: "progress_recorded", event };
 }
 
 async function executeQuickImportJobTracks(
@@ -133,6 +272,7 @@ async function executeQuickImportJobTracks(
       id: generateId(), userId: context.userId, companyName, roleName,
       lifecycle: command.lifecycle, jobUrl: null, resumeId: null, submittedAt: null,
       createdAt, createdVia: "quick_import", jobDescription: { text: null, imageAssetIds: [] },
+      version: 1,
     });
     jobTracks.push(toJobTrackView(stored));
   }
@@ -212,6 +352,35 @@ async function executeCreateTask(
     },
   });
   return { outcome: "task_created", task };
+}
+
+async function executeUpdateTask(
+  command: UpdateTaskCommand,
+  context: ActorContext,
+  transaction: JobWorkflowTransaction,
+): Promise<UpdateTaskResult> {
+  const existing = await transaction.findTask(context.userId, command.taskId);
+  if (!existing) throw new Error("NOT_FOUND: task was not found");
+  if (existing.kind === "assessment") throw new Error("CONFLICT: assessment task must be updated through its assessment");
+  if (existing.completedAt || existing.cancelledAt) throw new Error("CONFLICT: only an open task can be updated");
+  if (!existing.jobTrackId) throw new Error("CONFLICT: task is not attached to a job track");
+  const title = command.title.trim();
+  if (!title) throw new Error("VALIDATION_ERROR: task title is required");
+  const interviewId = command.interviewId ?? null;
+  if (interviewId) {
+    const interview = await transaction.findInterview(context.userId, interviewId);
+    if (!interview || interview.jobTrackId !== existing.jobTrackId) {
+      throw new Error("NOT_FOUND: interview was not found in this job track");
+    }
+  }
+  const task = await transaction.updateTask({
+    userId: context.userId,
+    taskId: existing.id,
+    title,
+    deadlineAt: command.deadlineAt ? parseTimestamp(command.deadlineAt, "deadlineAt") : null,
+    interviewId,
+  });
+  return { outcome: "task_updated", task };
 }
 
 async function executeCompleteTask(
@@ -408,6 +577,7 @@ async function executeScheduleInterview(
     cancelledAt: null,
     occurredAt: null,
     reviewedAt: null,
+    transcriptText: null,
   });
   const event = await transaction.insertEvent({
     id: generateId(),
@@ -588,6 +758,7 @@ async function executeCreateJobTrack(
     submittedAt: null,
     createdAt: now().toISOString(),
     createdVia: "normal",
+    version: 1,
     jobDescription: {
       text: descriptionText,
       imageAssetIds,
@@ -659,5 +830,6 @@ function toJobTrackView(jobTrack: StoredJobTrack): JobTrackView {
     resumeId: jobTrack.resumeId,
     submittedAt: jobTrack.submittedAt,
     createdAt: jobTrack.createdAt,
+    version: jobTrack.version,
   };
 }
