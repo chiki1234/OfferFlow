@@ -47,6 +47,7 @@ export type JobTrackListItem = {
   lastProgressAt: string | null;
   actionState: "action_required" | "waiting" | null;
   attentionFlags: Array<"overdue" | "waiting_long">;
+  currentNext: JobTrackCurrentNextView;
   version: number;
 };
 
@@ -109,7 +110,6 @@ export type JobTrackDetailView = {
   selectedResume: { id: string; name: string; assetId: string } | null;
   selectedResumeExperiences: Array<{ id: string; name: string; faqCount: number }>;
   jobDescriptionImages: Array<{ id: string; originalName: string; mimeType: string }>;
-  currentNext: JobTrackCurrentNextView;
 };
 
 export type WorkspaceView = JobTrackListView | DashboardView | CalendarWeekView | JobTrackDetailView;

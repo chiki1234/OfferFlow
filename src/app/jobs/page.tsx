@@ -102,8 +102,8 @@ function JobCard({ job, resumes = [], currentLocal = "" }: { job: JobTrackListIt
     <div className="job-meta-row">
       <span className={job.hasJobDescription ? "complete" : "missing"}><FileCheck2 size={15} /> {job.hasJobDescription ? "JD 已保存" : "待补充 JD"}</span>
       <span>{job.lifecycle === "planned" ? "尚未投递" : job.hasResume ? "已绑定简历" : "待补充简历"}</span>
-      {job.actionState === "action_required" && <span className="job-action-state">待行动</span>}
-      {job.actionState === "waiting" && <span>等待中</span>}
+      {job.actionState === "action_required" && <span className="job-action-state">待行动 · {job.currentNext.title}</span>}
+      {job.actionState === "waiting" && <span>等待中 · {job.currentNext.detail}</span>}
       {job.attentionFlags.includes("overdue") && <span className="job-attention">有逾期事项</span>}
       {job.attentionFlags.includes("waiting_long") && <span className="job-attention">等待较久</span>}
       {job.lifecycle === "ended" && <span>{endReasonLabel(job.endReason)}{job.endedAt ? ` · ${formatDate(job.endedAt)}` : ""}</span>}

@@ -22,12 +22,12 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
 
     <div className="detail-layout">
       <div className="detail-main">
-        <section className={`surface-card current-next-panel ${view.currentNext.state}`}>
-          <div className="current-next-icon">{view.currentNext.state === "waiting" ? <Hourglass size={21} /> : <CircleAlert size={21} />}</div>
+        <section className={`surface-card current-next-panel ${view.jobTrack.currentNext.state}`}>
+          <div className="current-next-icon">{view.jobTrack.currentNext.state === "waiting" ? <Hourglass size={21} /> : <CircleAlert size={21} />}</div>
           <div>
             <p className="eyebrow">当前 / 下一步</p>
-            <h2>{view.currentNext.title}</h2>
-            <p>{view.currentNext.detail}{view.currentNext.scheduledAt && view.currentNext.state === "action_required" ? ` · ${formatDateTime(view.currentNext.scheduledAt)}` : ""}</p>
+            <h2>{view.jobTrack.currentNext.title}</h2>
+            <p>{view.jobTrack.currentNext.detail}{view.jobTrack.currentNext.scheduledAt && view.jobTrack.currentNext.state === "action_required" ? ` · ${formatDateTime(view.jobTrack.currentNext.scheduledAt)}` : ""}</p>
             {view.jobTrack.attentionFlags.length > 0 && <div className="attention-flags">{view.jobTrack.attentionFlags.map((flag) => <span key={flag}>{flag === "overdue" ? "逾期" : "等待较久"}</span>)}</div>}
           </div>
         </section>
@@ -40,7 +40,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
           </div>
         </section>
         <section className="surface-card detail-section"><div className="section-title-row"><div><p className="eyebrow">行动队列</p><h2>待办</h2></div></div><div className="milestone-list">{view.tasks.filter((task) => task.kind !== "assessment").map((task) => <article className="milestone-item" key={task.id}><div><strong>{task.title}</strong><p>{task.deadlineAt ? `截止 ${formatDateTime(task.deadlineAt)}` : "无截止时间"}</p>{task.interviewId && <small>已关联面试</small>}{!task.completedAt && !task.cancelledAt && <TaskEditor jobTrackId={id} task={task} interviews={view.interviews.map(({ id: interviewId, roundLabel, interviewType }) => ({ id: interviewId, roundLabel, interviewType }))} token={randomUUID()} />}</div><span className={`status-pill ${task.completedAt ? "completed" : task.cancelledAt ? "cancelled" : "pending"}`}>{task.completedAt ? "已完成" : task.cancelledAt ? "已取消" : "待完成"}</span>{!task.completedAt && !task.cancelledAt && <div className="milestone-actions"><StatusActionButton intent="complete_task" jobTrackId={id} subjectId={task.id} token={randomUUID()} label="完成" /><StatusActionButton intent="cancel_task" jobTrackId={id} subjectId={task.id} token={randomUUID()} label="取消" /></div>}</article>)}{!view.tasks.some((task) => task.kind !== "assessment") && <p className="detail-note">还没有普通待办。</p>}</div></section>
-        <section className="surface-card detail-section"><div className="section-title-row"><div><p className="eyebrow">时间线</p><h2>招聘事实</h2></div></div><div className="timeline-list">{view.jobTrack.lifecycle === "active" && <div className="timeline-item current"><span /><div><section><strong>当前：{view.currentNext.title}</strong><p>{view.currentNext.detail}</p></section><time>现在</time></div></div>}{view.events.map((event) => { const detail = eventDetail(event.kind, event.payload); return <div className="timeline-item" key={event.id}><span /><div><section><strong>{eventLabel(event.kind)}</strong>{detail && <p>{detail}</p>}</section><time>{formatDateTime(event.occurredAt)}</time></div></div>; })}{!view.events.length && view.jobTrack.lifecycle !== "active" && <p className="detail-note">投递后的每次进展会出现在这里。</p>}</div></section>
+        <section className="surface-card detail-section"><div className="section-title-row"><div><p className="eyebrow">时间线</p><h2>招聘事实</h2></div></div><div className="timeline-list">{view.jobTrack.lifecycle === "active" && <div className="timeline-item current"><span /><div><section><strong>当前：{view.jobTrack.currentNext.title}</strong><p>{view.jobTrack.currentNext.detail}</p></section><time>现在</time></div></div>}{view.events.map((event) => { const detail = eventDetail(event.kind, event.payload); return <div className="timeline-item" key={event.id}><span /><div><section><strong>{eventLabel(event.kind)}</strong>{detail && <p>{detail}</p>}</section><time>{formatDateTime(event.occurredAt)}</time></div></div>; })}{!view.events.length && view.jobTrack.lifecycle !== "active" && <p className="detail-note">投递后的每次进展会出现在这里。</p>}</div></section>
       </div>
       <aside className="surface-card form-panel detail-actions"><JobActionsPanel jobTrackId={id} lifecycle={view.jobTrack.lifecycle} resumes={view.resumes} tokens={{ submit: randomUUID(), assessment: randomUUID(), interview: randomUUID(), resume: randomUUID(), jdImages: randomUUID(), task: randomUUID(), rejection: randomUUID(), end: randomUUID(), progress: randomUUID(), delete: randomUUID() }} /></aside>
     </div>

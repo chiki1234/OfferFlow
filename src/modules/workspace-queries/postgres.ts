@@ -2,7 +2,7 @@ import { and, asc, desc, eq, sql } from "drizzle-orm";
 import type { AppDatabase } from "@/db/client";
 import { assetLinks, assets, assessments, events, experiences, faqs, interviews, jobDescriptions, jobTracks, resumeExperiences, resumes, tasks } from "@/db/schema";
 import { deriveJobTrackStatus, type JobTrackFacts } from "./derive-job-track-status";
-import { deriveJobTrackCurrentNext } from "./derive-job-track-current-next";
+import { deriveJobTrackCurrentNext, type JobTrackCurrentNextFacts } from "./derive-job-track-current-next";
 import { markCalendarConflicts } from "./calendar-conflicts";
 import { sortDashboardActionItems } from "./dashboard-priority";
 import type {
@@ -194,42 +194,7 @@ async function readJobTrackDetail(
   if (!job) throw new Error("NOT_FOUND: job track was not found");
   const now = new Date();
   const status = deriveJobTrackStatus(buildJobTrackFacts(job, assessmentRows, interviewRows, taskRows), now);
-  const currentNext = deriveJobTrackCurrentNext({
-    lifecycle: job.lifecycle,
-    submittedAt: job.submittedAt?.toISOString() ?? null,
-    endedAt: job.endedAt?.toISOString() ?? null,
-    endReason: job.endReason,
-    lastProgressAt: job.lastProgressAt?.toISOString() ?? null,
-    assessments: assessmentRows.map((row) => ({
-      id: row.id,
-      title: row.title,
-      status: row.status,
-      timing: row.timingType === "deadline"
-        ? { type: "deadline" as const, deadlineAt: requireDate(row.deadlineAt).toISOString() }
-        : { type: "fixed_slot" as const, startAt: requireDate(row.startAt).toISOString(), endAt: requireDate(row.endAt).toISOString() },
-      completedAt: row.completedAt?.toISOString() ?? null,
-      cancelledAt: row.cancelledAt?.toISOString() ?? null,
-    })),
-    interviews: interviewRows.map((row) => ({
-      id: row.id,
-      roundLabel: row.roundLabel,
-      interviewType: row.interviewType,
-      startAt: row.startAt.toISOString(),
-      endAt: row.endAt.toISOString(),
-      status: row.status,
-      occurredAt: row.occurredAt?.toISOString() ?? null,
-      reviewedAt: row.reviewedAt?.toISOString() ?? null,
-    })),
-    tasks: taskRows.map((row) => ({
-      id: row.id,
-      interviewId: row.interviewId,
-      kind: row.kind,
-      title: row.title,
-      deadlineAt: row.deadlineAt?.toISOString() ?? null,
-      completedAt: row.completedAt?.toISOString() ?? null,
-      cancelledAt: row.cancelledAt?.toISOString() ?? null,
-    })),
-  }, now);
+  const currentNext = deriveJobTrackCurrentNext(buildCurrentNextFacts(job, assessmentRows, interviewRows, taskRows), now);
   return {
     type: "job_track_detail",
     jobTrack: {
@@ -245,6 +210,7 @@ async function readJobTrackDetail(
       lastProgressAt: job.lastProgressAt?.toISOString() ?? null,
       actionState: status.actionState,
       attentionFlags: status.attentionFlags,
+      currentNext,
       version: job.version,
       jobUrl: job.jobUrl,
       jobDescription: job.descriptionText,
@@ -302,7 +268,6 @@ async function readJobTrackDetail(
     selectedResume: resumeRows.find((resume) => resume.id === job.resumeId) ?? null,
     selectedResumeExperiences: selectedExperienceRows,
     jobDescriptionImages: imageRows,
-    currentNext,
   };
 }
 
@@ -350,6 +315,7 @@ async function readJobTracks(
   const jobsWithDescriptionImages = new Set(imageJobRows.map((row) => row.jobTrackId));
   const items = rows.map((row) => {
     const status = deriveJobTrackStatus(buildJobTrackFacts(row, assessmentRows, interviewRows, taskRows), now);
+    const currentNext = deriveJobTrackCurrentNext(buildCurrentNextFacts(row, assessmentRows, interviewRows, taskRows), now);
     return {
       id: row.id,
       companyName: row.companyName,
@@ -363,10 +329,55 @@ async function readJobTracks(
       lastProgressAt: row.lastProgressAt?.toISOString() ?? null,
       actionState: status.actionState,
       attentionFlags: status.attentionFlags,
+      currentNext,
       version: row.version,
     } satisfies JobTrackListItem;
   });
   return { type: "job_track_list", items, counts };
+}
+
+function buildCurrentNextFacts(
+  job: { id: string; lifecycle: "planned" | "active" | "ended"; submittedAt: Date | null; endedAt: Date | null; endReason: string | null; lastProgressAt: Date | null },
+  assessmentRows: AssessmentRow[],
+  interviewRows: InterviewRow[],
+  taskRows: TaskRow[],
+): JobTrackCurrentNextFacts {
+  return {
+    lifecycle: job.lifecycle,
+    submittedAt: job.submittedAt?.toISOString() ?? null,
+    endedAt: job.endedAt?.toISOString() ?? null,
+    endReason: job.endReason,
+    lastProgressAt: job.lastProgressAt?.toISOString() ?? null,
+    assessments: assessmentRows.filter((row) => row.jobTrackId === job.id).map((row) => ({
+      id: row.id,
+      title: row.title,
+      status: row.status,
+      timing: row.timingType === "deadline"
+        ? { type: "deadline" as const, deadlineAt: requireDate(row.deadlineAt).toISOString() }
+        : { type: "fixed_slot" as const, startAt: requireDate(row.startAt).toISOString(), endAt: requireDate(row.endAt).toISOString() },
+      completedAt: row.completedAt?.toISOString() ?? null,
+      cancelledAt: row.cancelledAt?.toISOString() ?? null,
+    })),
+    interviews: interviewRows.filter((row) => row.jobTrackId === job.id).map((row) => ({
+      id: row.id,
+      roundLabel: row.roundLabel,
+      interviewType: row.interviewType,
+      startAt: row.startAt.toISOString(),
+      endAt: row.endAt.toISOString(),
+      status: row.status,
+      occurredAt: row.occurredAt?.toISOString() ?? null,
+      reviewedAt: row.reviewedAt?.toISOString() ?? null,
+    })),
+    tasks: taskRows.filter((row) => row.jobTrackId === job.id).map((row) => ({
+      id: row.id,
+      interviewId: row.interviewId,
+      kind: row.kind,
+      title: row.title,
+      deadlineAt: row.deadlineAt?.toISOString() ?? null,
+      completedAt: row.completedAt?.toISOString() ?? null,
+      cancelledAt: row.cancelledAt?.toISOString() ?? null,
+    })),
+  };
 }
 
 async function readDashboard(
