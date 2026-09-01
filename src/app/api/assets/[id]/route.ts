@@ -3,6 +3,7 @@ import { z } from "zod";
 import { getPrivateObjectStorage } from "@/adapters/storage/private-object-storage";
 import { getOwnedAsset } from "@/modules/job-description-assets/service";
 import { getCurrentActor } from "@/shared/actor/current-actor";
+import { privateResponseHeaders } from "@/shared/http/private-response-headers";
 
 export const dynamic = "force-dynamic";
 
@@ -18,10 +19,10 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     responseBytes.set(bytes);
     return new Response(responseBytes.buffer, {
       headers: {
+        ...privateResponseHeaders,
         "Content-Type": asset.mimeType,
         "Content-Length": String(asset.sizeBytes),
         "Content-Disposition": `inline; filename*=UTF-8''${encodeURIComponent(asset.originalName)}`,
-        "Cache-Control": "private, max-age=300",
       },
     });
   } catch {
