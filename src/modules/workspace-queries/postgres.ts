@@ -2,6 +2,7 @@ import { and, asc, desc, eq, sql } from "drizzle-orm";
 import type { AppDatabase } from "@/db/client";
 import { assetLinks, assets, assessments, events, interviews, jobDescriptions, jobTracks, resumes, tasks } from "@/db/schema";
 import { deriveJobTrackStatus, type JobTrackFacts } from "./derive-job-track-status";
+import { deriveJobTrackCurrentNext } from "./derive-job-track-current-next";
 import { markCalendarConflicts } from "./calendar-conflicts";
 import type {
   CalendarItem,
@@ -140,6 +141,8 @@ async function readJobTrackDetail(
       roleName: jobTracks.roleName,
       lifecycle: jobTracks.lifecycle,
       submittedAt: jobTracks.submittedAt,
+      endedAt: jobTracks.endedAt,
+      endReason: jobTracks.endReason,
       resumeId: jobTracks.resumeId,
       jobUrl: jobTracks.jobUrl,
       descriptionText: jobDescriptions.textContent,
@@ -176,7 +179,44 @@ async function readJobTrackDetail(
       .orderBy(asc(assetLinks.sortOrder)),
   ]);
   if (!job) throw new Error("NOT_FOUND: job track was not found");
-  const status = deriveJobTrackStatus(buildJobTrackFacts(job, assessmentRows, interviewRows, taskRows), new Date());
+  const now = new Date();
+  const status = deriveJobTrackStatus(buildJobTrackFacts(job, assessmentRows, interviewRows, taskRows), now);
+  const currentNext = deriveJobTrackCurrentNext({
+    lifecycle: job.lifecycle,
+    submittedAt: job.submittedAt?.toISOString() ?? null,
+    endedAt: job.endedAt?.toISOString() ?? null,
+    endReason: job.endReason,
+    lastProgressAt: job.lastProgressAt?.toISOString() ?? null,
+    assessments: assessmentRows.map((row) => ({
+      id: row.id,
+      title: row.title,
+      status: row.status,
+      timing: row.timingType === "deadline"
+        ? { type: "deadline" as const, deadlineAt: requireDate(row.deadlineAt).toISOString() }
+        : { type: "fixed_slot" as const, startAt: requireDate(row.startAt).toISOString(), endAt: requireDate(row.endAt).toISOString() },
+      completedAt: row.completedAt?.toISOString() ?? null,
+      cancelledAt: row.cancelledAt?.toISOString() ?? null,
+    })),
+    interviews: interviewRows.map((row) => ({
+      id: row.id,
+      roundLabel: row.roundLabel,
+      interviewType: row.interviewType,
+      startAt: row.startAt.toISOString(),
+      endAt: row.endAt.toISOString(),
+      status: row.status,
+      occurredAt: row.occurredAt?.toISOString() ?? null,
+      reviewedAt: row.reviewedAt?.toISOString() ?? null,
+    })),
+    tasks: taskRows.map((row) => ({
+      id: row.id,
+      interviewId: row.interviewId,
+      kind: row.kind,
+      title: row.title,
+      deadlineAt: row.deadlineAt?.toISOString() ?? null,
+      completedAt: row.completedAt?.toISOString() ?? null,
+      cancelledAt: row.cancelledAt?.toISOString() ?? null,
+    })),
+  }, now);
   return {
     type: "job_track_detail",
     jobTrack: {
@@ -185,6 +225,8 @@ async function readJobTrackDetail(
       roleName: job.roleName,
       lifecycle: job.lifecycle,
       submittedAt: job.submittedAt?.toISOString() ?? null,
+      endedAt: job.endedAt?.toISOString() ?? null,
+      endReason: job.endReason,
       hasJobDescription: Boolean(job.descriptionText || imageRows.length),
       hasResume: Boolean(job.resumeId),
       lastProgressAt: job.lastProgressAt?.toISOString() ?? null,
@@ -246,6 +288,7 @@ async function readJobTrackDetail(
     resumes: resumeRows.map(({ id, name }) => ({ id, name })),
     selectedResume: resumeRows.find((resume) => resume.id === job.resumeId) ?? null,
     jobDescriptionImages: imageRows,
+    currentNext,
   };
 }
 
@@ -257,13 +300,15 @@ async function readJobTracks(
 ): Promise<JobTrackListView> {
   const conditions = [eq(jobTracks.userId, userId)];
   if (lifecycle) conditions.push(eq(jobTracks.lifecycle, lifecycle));
-  const [rows, countsRows, assessmentRows, interviewRows, taskRows] = await Promise.all([
+  const [rows, countsRows, assessmentRows, interviewRows, taskRows, imageJobRows] = await Promise.all([
     db.select({
       id: jobTracks.id,
       companyName: jobTracks.companyName,
       roleName: jobTracks.roleName,
       lifecycle: jobTracks.lifecycle,
       submittedAt: jobTracks.submittedAt,
+      endedAt: jobTracks.endedAt,
+      endReason: jobTracks.endReason,
       resumeId: jobTracks.resumeId,
       descriptionText: jobDescriptions.textContent,
       lastProgressAt: sql<Date | null>`max(${events.occurredAt})`,
@@ -279,10 +324,16 @@ async function readJobTracks(
     loaders.assessments(userId),
     loaders.interviews(userId),
     loaders.tasks(userId),
+    db.selectDistinct({ jobTrackId: jobDescriptions.jobTrackId })
+      .from(assetLinks)
+      .innerJoin(jobDescriptions, eq(jobDescriptions.id, assetLinks.ownerId))
+      .innerJoin(jobTracks, eq(jobTracks.id, jobDescriptions.jobTrackId))
+      .where(and(eq(assetLinks.ownerType, "job_description"), eq(jobTracks.userId, userId))),
   ]);
   const counts = { planned: 0, active: 0, ended: 0 };
   for (const row of countsRows) counts[row.lifecycle] = row.count;
   const now = new Date();
+  const jobsWithDescriptionImages = new Set(imageJobRows.map((row) => row.jobTrackId));
   const items = rows.map((row) => {
     const status = deriveJobTrackStatus(buildJobTrackFacts(row, assessmentRows, interviewRows, taskRows), now);
     return {
@@ -291,7 +342,9 @@ async function readJobTracks(
       roleName: row.roleName,
       lifecycle: row.lifecycle,
       submittedAt: row.submittedAt?.toISOString() ?? null,
-      hasJobDescription: Boolean(row.descriptionText),
+      endedAt: row.endedAt?.toISOString() ?? null,
+      endReason: row.endReason,
+      hasJobDescription: Boolean(row.descriptionText || jobsWithDescriptionImages.has(row.id)),
       hasResume: Boolean(row.resumeId),
       lastProgressAt: row.lastProgressAt?.toISOString() ?? null,
       actionState: status.actionState,

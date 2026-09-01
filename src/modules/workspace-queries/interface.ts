@@ -5,6 +5,7 @@ import type {
   JobEventView,
   TaskView,
 } from "@/modules/job-workflow/interface";
+import type { JobTrackCurrentNextView } from "./derive-job-track-current-next";
 
 export type ListJobTracksQuery = {
   type: "list_job_tracks";
@@ -39,6 +40,8 @@ export type JobTrackListItem = {
   roleName: string;
   lifecycle: "planned" | "active" | "ended";
   submittedAt: string | null;
+  endedAt: string | null;
+  endReason: string | null;
   hasJobDescription: boolean;
   hasResume: boolean;
   lastProgressAt: string | null;
@@ -105,6 +108,7 @@ export type JobTrackDetailView = {
   resumes: Array<{ id: string; name: string }>;
   selectedResume: { id: string; name: string; assetId: string } | null;
   jobDescriptionImages: Array<{ id: string; originalName: string; mimeType: string }>;
+  currentNext: JobTrackCurrentNextView;
 };
 
 export type WorkspaceView = JobTrackListView | DashboardView | CalendarWeekView | JobTrackDetailView;

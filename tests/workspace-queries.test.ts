@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { deriveJobTrackStatus } from "@/modules/workspace-queries/derive-job-track-status";
+import { deriveJobTrackCurrentNext } from "@/modules/workspace-queries/derive-job-track-current-next";
 import { markCalendarConflicts } from "@/modules/workspace-queries/calendar-conflicts";
 
 describe("deriveJobTrackStatus", () => {
@@ -81,6 +82,120 @@ describe("deriveJobTrackStatus", () => {
       attentionFlags: ["waiting_long"],
       reviewDueInterviewIds: [],
     });
+  });
+});
+
+describe("deriveJobTrackCurrentNext", () => {
+  it("优先展示已经逾期的行动，而不是更晚的面试", () => {
+    const view = deriveJobTrackCurrentNext(
+      {
+        lifecycle: "active",
+        submittedAt: "2026-08-20T00:00:00.000Z",
+        endedAt: null,
+        endReason: null,
+        lastProgressAt: "2026-08-25T00:00:00.000Z",
+        assessments: [{
+          id: "assessment-1",
+          title: "在线测评",
+          status: "pending",
+          timing: { type: "deadline", deadlineAt: "2026-08-31T15:59:00.000Z" },
+          completedAt: null,
+          cancelledAt: null,
+        }],
+        interviews: [{
+          id: "interview-1",
+          roundLabel: "一面",
+          interviewType: "技术面",
+          startAt: "2026-09-03T02:00:00.000Z",
+          endAt: "2026-09-03T03:00:00.000Z",
+          status: "scheduled",
+          occurredAt: null,
+          reviewedAt: null,
+        }],
+        tasks: [],
+      },
+      new Date("2026-09-01T04:00:00.000Z"),
+    );
+
+    expect(view).toEqual({
+      state: "action_required",
+      title: "在线测评",
+      detail: "已超过截止时间",
+      scheduledAt: "2026-08-31T15:59:00.000Z",
+      waitingDays: null,
+    });
+  });
+
+  it("没有下一步行动时展示从最近进展开始的等待天数", () => {
+    const view = deriveJobTrackCurrentNext(
+      {
+        lifecycle: "active",
+        submittedAt: "2026-08-20T00:00:00.000Z",
+        endedAt: null,
+        endReason: null,
+        lastProgressAt: "2026-08-28T04:00:00.000Z",
+        assessments: [],
+        interviews: [],
+        tasks: [],
+      },
+      new Date("2026-09-01T04:00:00.000Z"),
+    );
+
+    expect(view).toEqual({
+      state: "waiting",
+      title: "等待公司下一步",
+      detail: "最近进展后已等待 4 天",
+      scheduledAt: null,
+      waitingDays: 4,
+    });
+  });
+
+  it("待投递与已结束岗位不会伪造下一步行动", () => {
+    const base = {
+      submittedAt: null,
+      lastProgressAt: null,
+      assessments: [],
+      interviews: [],
+      tasks: [],
+    };
+
+    expect(deriveJobTrackCurrentNext({ ...base, lifecycle: "planned", endedAt: null, endReason: null }, new Date())).toMatchObject({ state: "planned", title: "等待投递" });
+    expect(deriveJobTrackCurrentNext({ ...base, lifecycle: "ended", endedAt: "2026-09-01T00:00:00.000Z", endReason: "withdrawn" }, new Date())).toMatchObject({ state: "ended", title: "已主动结束" });
+  });
+
+  it("已过去面试的准备任务不再作为下一步行动", () => {
+    const view = deriveJobTrackCurrentNext(
+      {
+        lifecycle: "active",
+        submittedAt: "2026-08-20T00:00:00.000Z",
+        endedAt: null,
+        endReason: null,
+        lastProgressAt: "2026-08-31T04:00:00.000Z",
+        assessments: [],
+        interviews: [{
+          id: "interview-past",
+          roundLabel: "一面",
+          interviewType: "技术面",
+          startAt: "2026-08-31T02:00:00.000Z",
+          endAt: "2026-08-31T03:00:00.000Z",
+          status: "scheduled",
+          occurredAt: "2026-08-31T03:00:00.000Z",
+          reviewedAt: null,
+        }],
+        tasks: [{
+          id: "prep-past",
+          interviewId: "interview-past",
+          kind: "interview_prep",
+          title: "准备一面",
+          deadlineAt: null,
+          completedAt: null,
+          cancelledAt: null,
+        }],
+      },
+      new Date("2026-09-01T04:00:00.000Z"),
+    );
+
+    expect(view.state).toBe("waiting");
   });
 });
 

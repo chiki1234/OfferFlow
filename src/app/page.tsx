@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight, CalendarDays, CircleAlert, Clock3 } from "lucide-react";
+import { AlertTriangle, ArrowRight, CalendarDays, CircleAlert, ClipboardCheck, Clock3 } from "lucide-react";
 import { getCurrentActor } from "@/shared/actor/current-actor";
 import { getWorkspaceQueries } from "@/modules/workspace-queries/composition";
 
@@ -10,6 +10,7 @@ export default async function HomePage() {
     { type: "get_dashboard" },
     getCurrentActor(),
   );
+  const reviewItems = view.todayItems.filter((item) => item.sourceType === "interview_review");
 
   return (
     <main className="page-stack">
@@ -75,13 +76,50 @@ export default async function HomePage() {
               {view.upcomingItems.map((item) => (
                 <Link href={item.jobTrackId ? `/jobs/${item.jobTrackId}` : "/calendar"} className="agenda-item" key={`${item.sourceType}-${item.id}`}>
                   <span className={`agenda-dot ${item.sourceType}`} />
-                  <div><strong>{item.title}</strong><p>{item.companyName} · {item.roleName}</p></div>
+                  <div><strong>{item.title}</strong><p>{item.companyName && item.roleName ? `${item.companyName} · ${item.roleName}` : "通用待办"}</p></div>
                   <time>{formatDateTime(item.startAt)}</time>
                 </Link>
               ))}
             </div>
           )}
         </article>
+      </section>
+
+      <section className="surface-card attention-panel">
+        <div className="section-title-row">
+          <div>
+            <p className="eyebrow">需要关注</p>
+            <h2>别让重要进展沉下去</h2>
+          </div>
+          <AlertTriangle size={20} />
+        </div>
+        {view.attentionJobs.length === 0 && reviewItems.length === 0 ? (
+          <div className="empty-state compact">
+            <span className="empty-icon"><ClipboardCheck size={20} /></span>
+            <div><strong>目前没有需要额外关注的岗位</strong><p>等待较久、逾期和待复盘事项会自动汇总到这里。</p></div>
+          </div>
+        ) : (
+          <div className="attention-list">
+            {view.attentionJobs.map((job) => (
+              <Link className="attention-item" href={`/jobs/${job.id}`} key={job.id}>
+                <div>
+                  <strong>{job.companyName} · {job.roleName}</strong>
+                  <p>{job.actionState === "action_required" ? "待行动" : "等待中"}</p>
+                </div>
+                <span>{job.attentionFlags.includes("overdue") ? "逾期" : "等待较久"}</span>
+              </Link>
+            ))}
+            {reviewItems.map((item) => (
+              <Link className="attention-item" href={`/interviews/${item.id}`} key={`review-${item.id}`}>
+                <div>
+                  <strong>{item.companyName} · {item.roleName}</strong>
+                  <p>{item.title}</p>
+                </div>
+                <span>待复盘</span>
+              </Link>
+            ))}
+          </div>
+        )}
       </section>
     </main>
   );

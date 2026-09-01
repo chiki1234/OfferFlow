@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import Image from "next/image";
 import Link from "next/link";
-import { ArrowLeft, CalendarClock, ExternalLink, FileText } from "lucide-react";
+import { ArrowLeft, CalendarClock, CircleAlert, ExternalLink, FileText, Hourglass } from "lucide-react";
 import { getWorkspaceQueries } from "@/modules/workspace-queries/composition";
 import { getCurrentActor } from "@/shared/actor/current-actor";
 import { JobActionsPanel, JobContextEditor, StatusActionButton, TaskEditor } from "./job-actions-panel";
@@ -17,6 +17,15 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
 
     <div className="detail-layout">
       <div className="detail-main">
+        <section className={`surface-card current-next-panel ${view.currentNext.state}`}>
+          <div className="current-next-icon">{view.currentNext.state === "waiting" ? <Hourglass size={21} /> : <CircleAlert size={21} />}</div>
+          <div>
+            <p className="eyebrow">当前 / 下一步</p>
+            <h2>{view.currentNext.title}</h2>
+            <p>{view.currentNext.detail}{view.currentNext.scheduledAt && view.currentNext.state === "action_required" ? ` · ${formatDateTime(view.currentNext.scheduledAt)}` : ""}</p>
+            {view.jobTrack.attentionFlags.length > 0 && <div className="attention-flags">{view.jobTrack.attentionFlags.map((flag) => <span key={flag}>{flag === "overdue" ? "逾期" : "等待较久"}</span>)}</div>}
+          </div>
+        </section>
         <section className="surface-card detail-section"><div className="section-title-row"><div><p className="eyebrow">岗位上下文</p><h2>JD 与投递简历</h2></div><FileText size={20} /></div>{view.selectedResume && <a className="transcript-file-link" href={`/api/assets/${view.selectedResume.assetId}`} target="_blank" rel="noreferrer">打开投递简历：{view.selectedResume.name}</a>}<p className="jd-copy">{view.jobTrack.jobDescription || (view.jobDescriptionImages.length ? "JD 以截图保存。" : "还没有补充 JD。")}</p>{view.jobDescriptionImages.length > 0 && <div className="jd-image-grid">{view.jobDescriptionImages.map((asset) => <a href={`/api/assets/${asset.id}`} key={asset.id} target="_blank" rel="noreferrer"><Image src={`/api/assets/${asset.id}`} alt={asset.originalName} width={360} height={240} unoptimized /><span>{asset.originalName}</span></a>)}</div>}<JobContextEditor jobTrack={view.jobTrack} token={randomUUID()} /></section>
         <section className="surface-card detail-section"><div className="section-title-row"><div><p className="eyebrow">硬时间</p><h2>测评与面试</h2></div><CalendarClock size={20} /></div>
           <div className="milestone-list">
