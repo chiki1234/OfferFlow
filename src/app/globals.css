@@ -711,6 +711,15 @@ a {
 .quick-task-list span { font-size: 11px; font-weight: 700; }
 .quick-task-list small { color: var(--muted); font-size: 9px; }
 
+.system-state-page { display: grid; min-height: 100vh; place-items: center; padding: 32px; }
+.system-state-card { display: grid; width: min(100%, 540px); justify-items: start; padding: 36px; }
+.system-state-icon { display: grid; width: 52px; height: 52px; place-items: center; border-radius: 15px; background: #e5f2ea; color: var(--brand); margin-bottom: 22px; }
+.system-state-icon.error { background: #fff0e8; color: #a34832; }
+.system-state-card h1 { margin: 9px 0 0; font-size: 28px; letter-spacing: -.03em; }
+.system-state-card > p:not(.eyebrow) { margin: 14px 0 24px; color: var(--muted); font-size: 13px; line-height: 1.7; }
+.system-state-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.system-state-actions .secondary-button { min-height: 44px; }
+
 .mobile-nav {
   display: none;
 }

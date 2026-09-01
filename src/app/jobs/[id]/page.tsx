@@ -1,16 +1,21 @@
 import { randomUUID } from "node:crypto";
 import Image from "next/image";
 import Link from "next/link";
+import { notFound } from "next/navigation";
 import { ArrowLeft, CalendarClock, CircleAlert, ExternalLink, FileText, Hourglass } from "lucide-react";
 import { getWorkspaceQueries } from "@/modules/workspace-queries/composition";
 import { getCurrentActor } from "@/shared/actor/current-actor";
+import { isDomainNotFoundError } from "@/shared/errors/domain-error";
 import { JobActionsPanel, JobContextEditor, StatusActionButton, TaskEditor } from "./job-actions-panel";
 
 export const dynamic = "force-dynamic";
 
 export default async function JobDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const view = await getWorkspaceQueries().read({ type: "get_job_track_detail", jobTrackId: id }, getCurrentActor());
+  const view = await getWorkspaceQueries().read({ type: "get_job_track_detail", jobTrackId: id }, getCurrentActor()).catch((error: unknown) => {
+    if (isDomainNotFoundError(error)) notFound();
+    throw error;
+  });
   return <main className="page-stack">
     <Link className="back-link" href="/jobs"><ArrowLeft size={16} />返回岗位列表</Link>
     <header className="page-heading detail-heading"><div><p className="eyebrow">{lifecycleLabel(view.jobTrack.lifecycle)}</p><h1>{view.jobTrack.roleName}</h1><p className="page-description">{view.jobTrack.companyName} · {actionLabel(view.jobTrack.actionState)}</p></div>{view.jobTrack.jobUrl && <a className="secondary-button" href={view.jobTrack.jobUrl} rel="noreferrer" target="_blank">查看原岗位 <ExternalLink size={16} /></a>}</header>

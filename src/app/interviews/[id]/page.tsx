@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import Link from "next/link";
+import { notFound } from "next/navigation";
 import { ArrowLeft, FileText, Video } from "lucide-react";
 import { FaqBatchForm } from "@/app/faq/knowledge-forms";
 import {
@@ -10,12 +11,16 @@ import {
 } from "@/app/jobs/[id]/job-actions-panel";
 import { getInterviewKnowledgeDetail } from "@/modules/interview-knowledge/queries";
 import { getCurrentActor } from "@/shared/actor/current-actor";
+import { isDomainNotFoundError } from "@/shared/errors/domain-error";
 
 export const dynamic = "force-dynamic";
 
 export default async function InterviewDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const view = await getInterviewKnowledgeDetail(getCurrentActor().userId, id);
+  const view = await getInterviewKnowledgeDetail(getCurrentActor().userId, id).catch((error: unknown) => {
+    if (isDomainNotFoundError(error)) notFound();
+    throw error;
+  });
   const interview = view.interview;
   const reviewDue = interview.status === "scheduled" && new Date(interview.startAt) <= new Date() && !interview.reviewedAt;
 

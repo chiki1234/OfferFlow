@@ -4,6 +4,7 @@ import { assetLinks, assets, assessments, events, interviews, jobDescriptions, j
 import { deriveJobTrackStatus, type JobTrackFacts } from "./derive-job-track-status";
 import { deriveJobTrackCurrentNext } from "./derive-job-track-current-next";
 import { markCalendarConflicts } from "./calendar-conflicts";
+import { sortDashboardActionItems } from "./dashboard-priority";
 import type {
   CalendarItem,
   DashboardActionItem,
@@ -368,7 +369,7 @@ async function readDashboard(
     loaders.tasks(userId),
   ]);
   const todayEnd = endOfTodayInShanghai(now);
-  const todayItems: DashboardActionItem[] = [
+  const todayItems = sortDashboardActionItems([
     ...assessmentRows.filter((row) => row.status === "pending")
       .map((row) => ({ row, dueAt: row.timingType === "deadline" ? row.deadlineAt : row.startAt }))
       .filter((item): item is { row: AssessmentRow; dueAt: Date } => Boolean(item.dueAt && item.dueAt <= todayEnd))
@@ -404,7 +405,7 @@ async function readDashboard(
         dueAt: row.startAt.toISOString(),
         overdue: false,
       })),
-  ].sort((left, right) => left.dueAt.localeCompare(right.dueAt));
+  ] satisfies DashboardActionItem[]);
   const upcomingEnd = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
   return {
     type: "dashboard",

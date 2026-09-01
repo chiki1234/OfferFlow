@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { deriveJobTrackStatus } from "@/modules/workspace-queries/derive-job-track-status";
 import { deriveJobTrackCurrentNext } from "@/modules/workspace-queries/derive-job-track-current-next";
 import { markCalendarConflicts } from "@/modules/workspace-queries/calendar-conflicts";
+import { sortDashboardActionItems } from "@/modules/workspace-queries/dashboard-priority";
 
 describe("deriveJobTrackStatus", () => {
   it("未完成且逾期的测评会要求行动并标记逾期", () => {
@@ -207,5 +208,18 @@ describe("markCalendarConflicts", () => {
       { id: "d1", sourceType: "task", jobTrackId: "j1", companyName: "A", roleName: "R", title: "截止", startAt: "2026-09-08T02:15:00.000Z", endAt: null, isDeadline: true, hasConflict: false },
     ]);
     expect(result.map((item) => item.hasConflict)).toEqual([true, true, false]);
+  });
+});
+
+describe("sortDashboardActionItems", () => {
+  it("所有逾期行动都排在待复盘等普通行动之前，同级再按时间排序", () => {
+    const base = { jobTrackId: "job-1", companyName: "A", roleName: "R" };
+    const result = sortDashboardActionItems([
+      { ...base, id: "review-old", sourceType: "interview_review", title: "复盘一面", dueAt: "2026-08-20T00:00:00.000Z", overdue: false },
+      { ...base, id: "overdue-later", sourceType: "task", title: "提交材料", dueAt: "2026-08-31T00:00:00.000Z", overdue: true },
+      { ...base, id: "overdue-earlier", sourceType: "assessment", title: "在线测评", dueAt: "2026-08-30T00:00:00.000Z", overdue: true },
+    ]);
+
+    expect(result.map((item) => item.id)).toEqual(["overdue-earlier", "overdue-later", "review-old"]);
   });
 });
