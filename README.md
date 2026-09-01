@@ -14,7 +14,8 @@
 - Experience、Resume 关联、FAQ Block 批量解析、搜索筛选和知识库维护
 - 日历时间冲突提示和通用进展 Timeline 记录
 - PostgreSQL schema、MinIO 私有对象存储和四份 migration
-- 真实数据驱动的工作台、岗位详情、周日历和 Timeline
+- 真实数据驱动的工作台、岗位详情、可翻周日历和 Timeline
+- GitHub Actions 持续运行 Lint、测试、类型检查和生产构建
 
 ## 本地启动
 

@@ -26,6 +26,17 @@ export async function createExperience(input: {
   return { id, name, content };
 }
 
+export async function updateExperience(input: { userId: string; experienceId: string; name: string; content: string }) {
+  const name = input.name.trim();
+  const content = input.content.trim();
+  if (!name || !content) throw new Error("VALIDATION_ERROR: experience name and content are required");
+  const updated = await getDatabaseRuntime().db.update(experiences).set({ name, content, updatedAt: new Date() })
+    .where(and(eq(experiences.id, input.experienceId), eq(experiences.userId, input.userId)))
+    .returning({ id: experiences.id, name: experiences.name, content: experiences.content });
+  if (!updated.length) throw new Error("NOT_FOUND: experience was not found");
+  return updated[0];
+}
+
 export async function setResumeExperiences(input: {
   userId: string;
   resumeId: string;

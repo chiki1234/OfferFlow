@@ -4,13 +4,18 @@ import { useActionState, useMemo, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { generalFaqCategories, experienceFaqCategories } from "@/modules/interview-knowledge/faq-batch";
 import { parseFaqBlocks } from "@/modules/interview-knowledge/faq-parser";
-import { commitFaqBatchAction, createExperienceAction, deleteFaqAction, setResumeExperiencesAction, updateFaqAction, type KnowledgeActionState } from "./actions";
+import { commitFaqBatchAction, createExperienceAction, deleteFaqAction, setResumeExperiencesAction, updateExperienceAction, updateFaqAction, type KnowledgeActionState } from "./actions";
 
 const initialState: KnowledgeActionState = { error: null, success: null };
 
 export function ExperienceForm() {
   const [state, action] = useActionState(createExperienceAction, initialState);
   return <form action={action} className="create-form knowledge-form"><h3>新增经历</h3><label>经历名称<input name="name" placeholder="例如：DeepResearch 项目" required /></label><label>经历内容<textarea name="content" rows={5} placeholder="项目背景、你的职责、方案和结果…" required /></label><Feedback state={state} /><Submit label="保存经历" /></form>;
+}
+
+export function ExperienceEditor({ experience }: { experience: { id: string; name: string; content: string } }) {
+  const [state, action] = useActionState(updateExperienceAction, initialState);
+  return <details className="context-editor"><summary>编辑经历内容</summary><form action={action} className="create-form"><input type="hidden" name="experienceId" value={experience.id} /><label>经历名称<input name="name" defaultValue={experience.name} required /></label><label>经历内容<textarea name="content" rows={12} defaultValue={experience.content} required /></label><Feedback state={state} /><Submit label="保存经历" /></form></details>;
 }
 
 export function FaqBatchForm({ token, interviews, experiences }: { token: string; interviews: Array<{ id: string; companyName: string; roleName: string; roundLabel: string }>; experiences: Array<{ id: string; name: string }> }) {

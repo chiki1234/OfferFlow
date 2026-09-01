@@ -3,6 +3,7 @@ import Link from "next/link";
 import { ArrowUpRight, BriefcaseBusiness, FileCheck2 } from "lucide-react";
 import { getWorkspaceQueries } from "@/modules/workspace-queries/composition";
 import { getCurrentActor } from "@/shared/actor/current-actor";
+import { getResumeOptions } from "@/modules/resume-library/queries";
 import { CreateJobForm } from "./create-job-form";
 import { QuickImportForm } from "./quick-import-form";
 
@@ -23,10 +24,11 @@ export default async function JobsPage({
   const selected = lifecycleTabs.some((tab) => tab.key === params.tab)
     ? (params.tab as (typeof lifecycleTabs)[number]["key"])
     : "planned";
-  const view = await getWorkspaceQueries().read(
-    { type: "list_job_tracks", lifecycle: selected },
-    getCurrentActor(),
-  );
+  const actor = getCurrentActor();
+  const [view, resumes] = await Promise.all([
+    getWorkspaceQueries().read({ type: "list_job_tracks", lifecycle: selected }, actor),
+    getResumeOptions(actor.userId),
+  ]);
 
   return (
     <main className="page-stack">
@@ -88,7 +90,7 @@ export default async function JobsPage({
         </section>
 
         <aside className="surface-card form-panel">
-          <CreateJobForm idempotencyKey={randomUUID()} />
+          <CreateJobForm idempotencyKey={randomUUID()} resumes={resumes} />
           <QuickImportForm idempotencyKey={randomUUID()} />
         </aside>
       </div>

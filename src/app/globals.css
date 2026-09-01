@@ -354,6 +354,10 @@ a {
 .agenda-dot.overdue { background: #c64c3c; }
 
 .calendar-list { display: grid; gap: 12px; margin-top: 40px; }
+.calendar-navigation { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 16px; margin-top: 30px; }
+.calendar-navigation > div { display: grid; justify-items: center; gap: 5px; }
+.calendar-navigation strong { font-size: 14px; }
+.calendar-navigation > div a { color: var(--brand); font-size: 10px; font-weight: 750; }
 .calendar-item { display: grid; grid-template-columns: 140px 1fr; gap: 22px; padding: 21px 24px; }
 .calendar-item > time { display: flex; flex-direction: column; gap: 7px; color: var(--muted); font-size: 12px; }
 .calendar-item > time strong { color: var(--foreground); font-size: 15px; }

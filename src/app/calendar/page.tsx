@@ -1,18 +1,21 @@
-import { CalendarDays } from "lucide-react";
-import { addDays, startOfWeek } from "date-fns";
+import Link from "next/link";
+import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
 import { getWorkspaceQueries } from "@/modules/workspace-queries/composition";
+import { getShanghaiCalendarWeek } from "@/modules/workspace-queries/calendar-week";
 import { getCurrentActor } from "@/shared/actor/current-actor";
 
 export const dynamic = "force-dynamic";
 
-export default async function CalendarPage() {
-  const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 });
-  const weekEnd = addDays(weekStart, 7);
+export default async function CalendarPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
+  const params = await searchParams;
+  const now = new Date();
+  const week = getShanghaiCalendarWeek(now, first(params.week));
+  const currentWeekKey = getShanghaiCalendarWeek(now).key;
   const view = await getWorkspaceQueries().read(
     {
       type: "get_calendar_week",
-      startAt: weekStart.toISOString(),
-      endAt: weekEnd.toISOString(),
+      startAt: week.startAt,
+      endAt: week.endAt,
     },
     getCurrentActor(),
   );
@@ -25,6 +28,7 @@ export default async function CalendarPage() {
           <p className="page-description">面试、固定笔试和 Deadline 会直接从业务对象汇总到这里。</p>
         </div>
       </header>
+      <nav className="calendar-navigation" aria-label="切换周"><Link className="secondary-button" href={`/calendar?week=${week.previousKey}`}><ChevronLeft size={16} />上一周</Link><div><strong>{formatWeekRange(week.startAt, week.endAt)}</strong>{week.key !== currentWeekKey && <Link href="/calendar">回到本周</Link>}</div><Link className="secondary-button" href={`/calendar?week=${week.nextKey}`}>下一周<ChevronRight size={16} /></Link></nav>
       {view.items.length === 0 ? (
         <section className="surface-card empty-state jobs-empty" style={{ marginTop: 40 }}>
           <span className="empty-icon"><CalendarDays size={22} /></span>
@@ -42,6 +46,12 @@ export default async function CalendarPage() {
       )}
     </main>
   );
+}
+
+function first(value: string | string[] | undefined) { return Array.isArray(value) ? value[0] : value; }
+function formatWeekRange(startAt: string, endAt: string) {
+  const formatter = new Intl.DateTimeFormat("zh-CN", { timeZone: "Asia/Shanghai", month: "long", day: "numeric" });
+  return `${formatter.format(new Date(startAt))} – ${formatter.format(new Date(new Date(endAt).getTime() - 1))}`;
 }
 
 const dateFormatter = new Intl.DateTimeFormat("zh-CN", { timeZone: "Asia/Shanghai", month: "numeric", day: "numeric", weekday: "short" });

@@ -346,6 +346,7 @@ async function executeCreateTask(
   if (interviewId) {
     const interview = await transaction.findInterview(context.userId, interviewId);
     if (!interview || interview.jobTrackId !== jobTrack.id) throw new Error("NOT_FOUND: interview was not found in this job track");
+    if (interview.status === "cancelled") throw new Error("CONFLICT: tasks cannot be added to a cancelled interview");
   }
   const task = await transaction.insertTask({
     userId: context.userId,

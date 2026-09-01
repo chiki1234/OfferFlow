@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { parseFaqBlocks } from "@/modules/interview-knowledge/faq-parser";
-import { commitFaqBatch, createExperience, deleteFaq, setResumeExperiences, updateFaq } from "@/modules/interview-knowledge/service";
+import { commitFaqBatch, createExperience, deleteFaq, setResumeExperiences, updateExperience, updateFaq } from "@/modules/interview-knowledge/service";
 import { getCurrentActor } from "@/shared/actor/current-actor";
 
 export type KnowledgeActionState = { error: string | null; success: string | null };
@@ -17,6 +17,20 @@ export async function createExperienceAction(_state: KnowledgeActionState, formD
   } catch (error) {
     console.error("Failed to create experience", error);
     return { error: "经历保存失败，请检查输入。", success: null };
+  }
+}
+
+export async function updateExperienceAction(_state: KnowledgeActionState, formData: FormData): Promise<KnowledgeActionState> {
+  try {
+    const data = z.object({ experienceId: z.uuid(), name: z.string().trim().min(1).max(255), content: z.string().trim().min(1).max(100000) }).parse({ experienceId: formData.get("experienceId"), name: formData.get("name"), content: formData.get("content") });
+    await updateExperience({ userId: getCurrentActor().userId, ...data });
+    revalidatePath("/faq");
+    revalidatePath(`/experiences/${data.experienceId}`);
+    revalidatePath("/interviews/[id]", "page");
+    return { error: null, success: "经历已更新。" };
+  } catch (error) {
+    console.error("Failed to update experience", error);
+    return { error: "经历更新失败，请检查输入。", success: null };
   }
 }
 

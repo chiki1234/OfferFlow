@@ -521,6 +521,17 @@ describe("JobWorkflow", () => {
     });
   });
 
+  it("面试准备待办必须关联同一岗位下的面试", async () => {
+    const workflow = createInMemoryJobWorkflow({ resumes: [{ id: "resume-prep", userId: "user-1" }] });
+    const created = await workflow.execute({ type: "create_job_track", idempotencyKey: "prep-job", companyName: "滴滴", roleName: "AI 产品经理", jobDescription: { text: "智能出行产品" } }, { userId: "user-1" });
+    await workflow.execute({ type: "submit_application", idempotencyKey: "prep-submit", jobTrackId: created.jobTrack.id, resumeId: "resume-prep", submittedAt: "2026-09-01T11:00:00.000Z" }, { userId: "user-1" });
+    const interview = await workflow.execute({ type: "schedule_interview", idempotencyKey: "prep-interview", jobTrackId: created.jobTrack.id, roundLabel: "一面", interviewType: "视频面试", startAt: "2026-09-08T02:00:00.000Z", endAt: "2026-09-08T03:00:00.000Z", receivedAt: "2026-09-02T05:00:00.000Z" }, { userId: "user-1" });
+
+    const task = await workflow.execute({ type: "create_task", idempotencyKey: "prep-task", jobTrackId: created.jobTrack.id, interviewId: interview.interview.id, kind: "interview_prep", title: "准备项目追问", deadlineAt: "2026-09-07T12:00:00.000Z" }, { userId: "user-1" });
+
+    expect(task).toMatchObject({ outcome: "task_created", task: { kind: "interview_prep", interviewId: interview.interview.id, jobTrackId: created.jobTrack.id } });
+  });
+
   it("记录拒信会结束求职推进并保留拒绝事实", async () => {
     const workflow = createInMemoryJobWorkflow({ resumes: [{ id: "resume-rejection", userId: "user-1" }] });
     const created = await workflow.execute({ type: "create_job_track", idempotencyKey: "reject-create", companyName: "百度", roleName: "AI 产品经理", jobDescription: { text: "智能搜索产品" } }, { userId: "user-1" });

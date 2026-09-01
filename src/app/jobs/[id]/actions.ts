@@ -176,16 +176,18 @@ export async function jobDetailAction(
         return { error: null, success: "面试转录已保存。" };
       }
       case "task": {
-        const data = z.object({ title: z.string().trim().min(1).max(255), deadlineAt: z.string().min(1) }).parse({ title: formData.get("title"), deadlineAt: formData.get("deadlineAt") });
+        const data = z.object({ title: z.string().trim().min(1).max(255), deadlineAt: z.string().min(1), interviewId: z.union([z.uuid(), z.literal("")]) }).parse({ title: formData.get("title"), deadlineAt: formData.get("deadlineAt"), interviewId: formData.get("interviewId") || "" });
         await workflow.execute({
           type: "create_task",
           idempotencyKey: base.data.idempotencyKey,
           jobTrackId: base.data.jobTrackId,
-          kind: "generic",
+          kind: data.interviewId ? "interview_prep" : "generic",
+          interviewId: data.interviewId || undefined,
           title: data.title,
           deadlineAt: toIso(data.deadlineAt),
         }, actor);
         revalidateWorkspace(base.data.jobTrackId);
+        if (data.interviewId) revalidatePath(`/interviews/${data.interviewId}`);
         return { error: null, success: "待办已创建。" };
       }
       case "update_task": {
@@ -219,6 +221,7 @@ export async function jobDetailAction(
           completedAt: new Date().toISOString(),
         }, actor);
         revalidateWorkspace(base.data.jobTrackId);
+        revalidatePath("/interviews/[id]", "page");
         return { error: null, success: "待办已完成。" };
       }
       case "cancel_task": {
@@ -229,6 +232,7 @@ export async function jobDetailAction(
           cancelledAt: new Date().toISOString(),
         }, actor);
         revalidateWorkspace(base.data.jobTrackId);
+        revalidatePath("/interviews/[id]", "page");
         return { error: null, success: "待办已取消。" };
       }
       case "complete_assessment": {

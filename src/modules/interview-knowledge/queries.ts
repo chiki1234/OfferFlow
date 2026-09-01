@@ -1,5 +1,5 @@
 import { and, asc, desc, eq, ilike, or, sql } from "drizzle-orm";
-import { assets, experiences, faqs, interviews, jobTracks, resumeExperiences, resumes } from "@/db/schema";
+import { assets, experiences, faqs, interviews, jobTracks, resumeExperiences, resumes, tasks } from "@/db/schema";
 import { getDatabaseRuntime } from "@/db/runtime";
 import { normalizeFaqLibraryFilters } from "./faq-filters";
 
@@ -135,7 +135,7 @@ export async function getInterviewKnowledgeDetail(userId: string, interviewId: s
     .leftJoin(assets, eq(assets.id, interviews.transcriptAssetId))
     .where(and(eq(interviews.id, interviewId), eq(jobTracks.userId, userId))).limit(1);
   if (!interview) throw new Error("NOT_FOUND: interview was not found");
-  const [faqRows, experienceRows] = await Promise.all([
+  const [faqRows, experienceRows, taskRows] = await Promise.all([
     db.select({
       id: faqs.id,
       question: faqs.question,
@@ -155,6 +155,15 @@ export async function getInterviewKnowledgeDetail(userId: string, interviewId: s
           .orderBy(asc(resumeExperiences.sortOrder))
       : db.select({ id: experiences.id, name: experiences.name, content: experiences.content })
           .from(experiences).where(eq(experiences.userId, userId)).orderBy(desc(experiences.updatedAt)),
+    db.select({
+      id: tasks.id,
+      title: tasks.title,
+      deadlineAt: tasks.deadlineAt,
+      completedAt: tasks.completedAt,
+      cancelledAt: tasks.cancelledAt,
+    }).from(tasks)
+      .where(and(eq(tasks.userId, userId), eq(tasks.interviewId, interview.id)))
+      .orderBy(asc(tasks.completedAt), asc(tasks.cancelledAt), asc(tasks.deadlineAt)),
   ]);
   return {
     interview: {
@@ -166,5 +175,11 @@ export async function getInterviewKnowledgeDetail(userId: string, interviewId: s
     },
     faqs: faqRows,
     experiences: experienceRows,
+    tasks: taskRows.map((task) => ({
+      ...task,
+      deadlineAt: task.deadlineAt?.toISOString() ?? null,
+      completedAt: task.completedAt?.toISOString() ?? null,
+      cancelledAt: task.cancelledAt?.toISOString() ?? null,
+    })),
   };
 }
