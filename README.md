@@ -42,7 +42,9 @@ Copy-Item .env.example .env.local
 
 服务就绪检查：<http://localhost:3000/api/health>。数据库和私有对象存储均可用时返回 `200`。
 
-生产容器镜像可以用 `docker build -t job-hunting-web .` 构建；运行时需注入 `.env.example` 中列出的环境变量。
+生产容器镜像可以用 `docker build -t job-hunting-web .` 构建；运行时需注入 `.env.example` 中列出的环境变量。正式的多实例镜像构建还应通过安全的 CI secret 向 Dockerfile 的同名 build args 注入 `NEXT_SERVER_ACTIONS_ENCRYPTION_KEY` 与 `DEPLOYMENT_VERSION`。
+
+自托管生产环境应在构建与运行阶段使用同一份 `NEXT_SERVER_ACTIONS_ENCRYPTION_KEY`，并为每次发布设置唯一 `DEPLOYMENT_VERSION`。前者避免多实例间 Server Action 无法解密，后者让滚动发布发生版本偏差时自动回退到完整页面导航。不要在生产环境沿用 `.env.example` 的示例密钥。
 
 ## 质量门禁
 

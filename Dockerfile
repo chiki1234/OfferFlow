@@ -6,6 +6,10 @@ RUN pnpm install --frozen-lockfile
 
 FROM node:22-alpine AS builder
 WORKDIR /app
+ARG NEXT_SERVER_ACTIONS_ENCRYPTION_KEY
+ARG DEPLOYMENT_VERSION
+ENV NEXT_SERVER_ACTIONS_ENCRYPTION_KEY=$NEXT_SERVER_ACTIONS_ENCRYPTION_KEY
+ENV DEPLOYMENT_VERSION=$DEPLOYMENT_VERSION
 RUN corepack enable
 COPY --from=dependencies /app/node_modules ./node_modules
 COPY . .
