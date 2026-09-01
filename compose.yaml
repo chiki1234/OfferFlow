@@ -26,3 +26,11 @@ services:
       - "9001:9001"
     volumes:
       - ./.data/minio:/data
+
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      - minio
+    entrypoint: >
+      /bin/sh -c "until mc alias set local http://minio:9000 minio replace-with-a-local-secret; do sleep 1; done;
+      mc mb --ignore-existing local/job-hunting"

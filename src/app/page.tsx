@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
   const view = await getWorkspaceQueries().read(
-    { type: "list_job_tracks" },
+    { type: "get_dashboard" },
     getCurrentActor(),
   );
 
@@ -39,13 +39,22 @@ export default async function HomePage() {
             </div>
             <Clock3 size={20} />
           </div>
-          <div className="empty-state compact">
-            <span className="empty-icon"><CircleAlert size={20} /></span>
-            <div>
-              <strong>暂时没有到期事项</strong>
-              <p>记录测评或面试后，这里会自动出现下一步。</p>
+          {view.todayItems.length === 0 ? (
+            <div className="empty-state compact">
+              <span className="empty-icon"><CircleAlert size={20} /></span>
+              <div><strong>暂时没有到期事项</strong><p>记录测评或面试后，这里会自动出现下一步。</p></div>
             </div>
-          </div>
+          ) : (
+            <div className="agenda-list">
+              {view.todayItems.map((item) => (
+                <Link href={`/jobs/${item.jobTrackId}`} className="agenda-item" key={`${item.sourceType}-${item.id}`}>
+                  <span className={item.overdue ? "agenda-dot overdue" : "agenda-dot"} />
+                  <div><strong>{item.title}</strong><p>{item.companyName} · {item.roleName}</p></div>
+                  <time>{formatDateTime(item.dueAt)}</time>
+                </Link>
+              ))}
+            </div>
+          )}
         </article>
 
         <article className="surface-card schedule-panel">
@@ -56,17 +65,36 @@ export default async function HomePage() {
             </div>
             <CalendarDays size={20} />
           </div>
-          <div className="empty-state compact">
-            <span className="empty-icon"><CalendarDays size={20} /></span>
-            <div>
-              <strong>本周还没有硬时间</strong>
-              <p>面试、固定笔试和 Deadline 会汇总到这里。</p>
+          {view.upcomingItems.length === 0 ? (
+            <div className="empty-state compact">
+              <span className="empty-icon"><CalendarDays size={20} /></span>
+              <div><strong>本周还没有硬时间</strong><p>面试、固定笔试和 Deadline 会汇总到这里。</p></div>
             </div>
-          </div>
+          ) : (
+            <div className="agenda-list">
+              {view.upcomingItems.map((item) => (
+                <Link href={item.jobTrackId ? `/jobs/${item.jobTrackId}` : "/calendar"} className="agenda-item" key={`${item.sourceType}-${item.id}`}>
+                  <span className={`agenda-dot ${item.sourceType}`} />
+                  <div><strong>{item.title}</strong><p>{item.companyName} · {item.roleName}</p></div>
+                  <time>{formatDateTime(item.startAt)}</time>
+                </Link>
+              ))}
+            </div>
+          )}
         </article>
       </section>
     </main>
   );
+}
+
+function formatDateTime(value: string) {
+  return new Intl.DateTimeFormat("zh-CN", {
+    timeZone: "Asia/Shanghai",
+    month: "numeric",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(value));
 }
 
 function MetricCard({

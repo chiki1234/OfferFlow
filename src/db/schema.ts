@@ -1,9 +1,12 @@
+import { sql } from "drizzle-orm";
 import {
+  check,
   index,
   integer,
   jsonb,
   pgEnum,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   uniqueIndex,
@@ -29,6 +32,8 @@ export const assessmentStatus = pgEnum("assessment_status", [
   "completed",
   "cancelled",
 ]);
+export const interviewStatus = pgEnum("interview_status", ["scheduled", "cancelled"]);
+export const faqKind = pgEnum("faq_kind", ["experience", "general"]);
 export const taskKind = pgEnum("task_kind", ["generic", "interview_prep", "assessment"]);
 export const eventSubjectType = pgEnum("event_subject_type", [
   "job_track",
@@ -86,6 +91,41 @@ export const resumes = pgTable(
     uniqueIndex("resumes_asset_unique").on(table.assetId),
     index("resumes_user_created_idx").on(table.userId, table.createdAt),
   ],
+);
+
+export const experienceGroups = pgTable(
+  "experience_groups",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    name: varchar("name", { length: 255 }).notNull(),
+    sortOrder: integer("sort_order").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("experience_groups_user_sort_idx").on(table.userId, table.sortOrder)],
+);
+
+export const experiences = pgTable(
+  "experiences",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    groupId: uuid("group_id").references(() => experienceGroups.id, { onDelete: "set null" }),
+    name: varchar("name", { length: 255 }).notNull(),
+    content: text("content").notNull(),
+    ...timestamps,
+  },
+  (table) => [index("experiences_user_updated_idx").on(table.userId, table.updatedAt)],
+);
+
+export const resumeExperiences = pgTable(
+  "resume_experiences",
+  {
+    resumeId: uuid("resume_id").notNull().references(() => resumes.id, { onDelete: "cascade" }),
+    experienceId: uuid("experience_id").notNull().references(() => experiences.id, { onDelete: "cascade" }),
+    sortOrder: integer("sort_order").notNull().default(0),
+  },
+  (table) => [primaryKey({ columns: [table.resumeId, table.experienceId] })],
 );
 
 export const jobTracks = pgTable(
@@ -157,6 +197,62 @@ export const assessments = pgTable(
   ],
 );
 
+export const interviews = pgTable(
+  "interviews",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    jobTrackId: uuid("job_track_id")
+      .notNull()
+      .references(() => jobTracks.id, { onDelete: "cascade" }),
+    sequenceNo: integer("sequence_no"),
+    roundLabel: varchar("round_label", { length: 255 }).notNull(),
+    interviewType: varchar("interview_type", { length: 255 }).notNull(),
+    startAt: timestamp("start_at", { withTimezone: true }).notNull(),
+    endAt: timestamp("end_at", { withTimezone: true }).notNull(),
+    meetingUrl: text("meeting_url"),
+    notes: text("notes"),
+    status: interviewStatus("status").notNull().default("scheduled"),
+    cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
+    occurredAt: timestamp("occurred_at", { withTimezone: true }),
+    reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+    transcriptText: text("transcript_text"),
+    transcriptAssetId: uuid("transcript_asset_id").references(() => assets.id, {
+      onDelete: "set null",
+    }),
+    version: integer("version").notNull().default(1),
+    ...timestamps,
+  },
+  (table) => [
+    index("interviews_job_status_start_idx").on(
+      table.jobTrackId,
+      table.status,
+      table.startAt,
+    ),
+  ],
+);
+
+export const faqs = pgTable(
+  "faqs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    sourceInterviewId: uuid("source_interview_id").notNull().references(() => interviews.id, { onDelete: "cascade" }),
+    kind: faqKind("kind").notNull(),
+    question: text("question").notNull(),
+    answer: text("answer").notNull(),
+    experienceId: uuid("experience_id").references(() => experiences.id, { onDelete: "restrict" }),
+    category: varchar("category", { length: 64 }).notNull(),
+    canonicalQuestionId: uuid("canonical_question_id"),
+    ...timestamps,
+  },
+  (table) => [
+    check("faqs_experience_kind_check", sql`(${table.kind} = 'experience' AND ${table.experienceId} IS NOT NULL) OR (${table.kind} = 'general' AND ${table.experienceId} IS NULL)`),
+    index("faqs_user_kind_category_idx").on(table.userId, table.kind, table.category),
+    index("faqs_experience_created_idx").on(table.experienceId, table.createdAt),
+    index("faqs_source_interview_idx").on(table.sourceInterviewId),
+  ],
+);
+
 export const tasks = pgTable(
   "tasks",
   {
@@ -165,6 +261,9 @@ export const tasks = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     jobTrackId: uuid("job_track_id").references(() => jobTracks.id, { onDelete: "cascade" }),
+    interviewId: uuid("interview_id").references(() => interviews.id, {
+      onDelete: "cascade",
+    }),
     assessmentId: uuid("assessment_id").references(() => assessments.id, {
       onDelete: "cascade",
     }),

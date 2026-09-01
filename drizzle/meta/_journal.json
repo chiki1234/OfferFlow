@@ -15,6 +15,20 @@
       "when": 1788234431261,
       "tag": "0001_aberrant_nightcrawler",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1788235320722,
+      "tag": "0002_amusing_spyke",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1788237058442,
+      "tag": "0003_solid_santa_claus",
+      "breakpoints": true
     }
   ]
 }

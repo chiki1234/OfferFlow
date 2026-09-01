@@ -6,10 +6,11 @@
 
 - Next.js 16 + TypeScript + PostgreSQL/Drizzle 工程基础
 - `JobWorkflow.execute(command)` 业务动作 interface
-- 新增待投递、完成投递、记录 Deadline 型测评的领域行为
-- PostgreSQL schema 与两份 migration
-- 工作台、求职页、日历和 FAQ 一级页面
-- 新增待投递 Server Action 与响应式表单
+- 待投递、简历版本上传、投递、Deadline 测评与完成联动
+- 面试创建、改期、取消、发生确认和复盘闭环
+- 行动状态、逾期 / 等待较久标记、待复盘推导
+- PostgreSQL schema、MinIO 存储和三份 migration
+- 真实数据驱动的工作台、岗位详情、周日历和 Timeline
 
 ## 本地启动
 
@@ -51,4 +52,4 @@ pnpm build
 
 1. Release A：投递、测评、面试、待办、Timeline、工作台与周日历。
 2. Release B：Experience、Resume 关联、FAQ Block 解析与知识库。
-3. 文件上传、交互式认证和部署加固。
+3. 交互式认证、部署加固与数据导出。

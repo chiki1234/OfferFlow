@@ -4,6 +4,7 @@ import { ArrowUpRight, BriefcaseBusiness, FileCheck2 } from "lucide-react";
 import { getWorkspaceQueries } from "@/modules/workspace-queries/composition";
 import { getCurrentActor } from "@/shared/actor/current-actor";
 import { CreateJobForm } from "./create-job-form";
+import { QuickImportForm } from "./quick-import-form";
 
 export const dynamic = "force-dynamic";
 
@@ -76,6 +77,9 @@ export default async function JobsPage({
                       <FileCheck2 size={15} /> {job.hasJobDescription ? "JD 已保存" : "待补充 JD"}
                     </span>
                     <span>{job.lifecycle === "planned" ? "尚未投递" : job.hasResume ? "已绑定简历" : "待补充简历"}</span>
+                    {job.actionState === "action_required" && <span className="job-action-state">有下一步行动</span>}
+                    {job.actionState === "waiting" && <span>等待进展</span>}
+                    {job.attentionFlags.includes("overdue") && <span className="job-attention">有逾期事项</span>}
                   </div>
                 </Link>
               ))
@@ -85,6 +89,7 @@ export default async function JobsPage({
 
         <aside className="surface-card form-panel">
           <CreateJobForm idempotencyKey={randomUUID()} />
+          <QuickImportForm idempotencyKey={randomUUID()} />
         </aside>
       </div>
     </main>
