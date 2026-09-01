@@ -2,6 +2,27 @@ import { describe, expect, it } from "vitest";
 import { createInMemoryJobWorkflow } from "@/modules/job-workflow/in-memory";
 
 describe("JobWorkflow", () => {
+  it("另一位用户不能修改不属于自己的岗位", async () => {
+    const workflow = createInMemoryJobWorkflow();
+    const created = await workflow.execute({
+      type: "create_job_track",
+      idempotencyKey: "ownership-create",
+      companyName: "隔离验证公司",
+      roleName: "隔离验证岗位",
+      jobDescription: { text: "仅创建者可见" },
+    }, { userId: "user-1" });
+
+    await expect(workflow.execute({
+      type: "update_job_track_context",
+      idempotencyKey: "ownership-update",
+      jobTrackId: created.jobTrack.id,
+      version: created.jobTrack.version,
+      companyName: "越权修改",
+      roleName: "越权修改",
+      jobDescription: { text: "越权修改" },
+    }, { userId: "user-2" })).rejects.toThrow("NOT_FOUND");
+  });
+
   it("用户可以创建待投递岗位", async () => {
     const workflow = createInMemoryJobWorkflow();
 

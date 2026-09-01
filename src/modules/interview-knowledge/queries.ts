@@ -22,7 +22,7 @@ export async function getKnowledgeLibrary(userId: string, input: { query?: strin
       content: experiences.content,
       faqCount: sql<number>`count(${faqs.id})::int`,
     }).from(experiences)
-      .leftJoin(faqs, eq(faqs.experienceId, experiences.id))
+      .leftJoin(faqs, and(eq(faqs.experienceId, experiences.id), eq(faqs.userId, userId)))
       .where(eq(experiences.userId, userId))
       .groupBy(experiences.id)
       .orderBy(desc(experiences.updatedAt)),
@@ -40,10 +40,10 @@ export async function getKnowledgeLibrary(userId: string, input: { query?: strin
       roundLabel: interviews.roundLabel,
       createdAt: faqs.createdAt,
     }).from(faqs)
-      .leftJoin(experiences, eq(experiences.id, faqs.experienceId))
+      .leftJoin(experiences, and(eq(experiences.id, faqs.experienceId), eq(experiences.userId, userId)))
       .innerJoin(interviews, eq(interviews.id, faqs.sourceInterviewId))
       .innerJoin(jobTracks, eq(jobTracks.id, interviews.jobTrackId))
-      .where(and(...faqConditions))
+      .where(and(...faqConditions, eq(jobTracks.userId, userId)))
       .orderBy(desc(faqs.createdAt)),
     db.select({
       id: interviews.id,
@@ -99,7 +99,7 @@ export async function getExperienceDetail(userId: string, experienceId: string) 
     }).from(faqs)
       .innerJoin(interviews, eq(interviews.id, faqs.sourceInterviewId))
       .innerJoin(jobTracks, eq(jobTracks.id, interviews.jobTrackId))
-      .where(and(eq(faqs.userId, userId), eq(faqs.experienceId, experience.id)))
+      .where(and(eq(faqs.userId, userId), eq(faqs.experienceId, experience.id), eq(jobTracks.userId, userId)))
       .orderBy(desc(faqs.createdAt)),
     db.select({ id: resumes.id, name: resumes.name }).from(resumeExperiences)
       .innerJoin(resumes, eq(resumes.id, resumeExperiences.resumeId))
@@ -136,8 +136,8 @@ export async function getInterviewKnowledgeDetail(userId: string, interviewId: s
   }).from(interviews)
     .innerJoin(jobTracks, eq(jobTracks.id, interviews.jobTrackId))
     .leftJoin(jobDescriptions, eq(jobDescriptions.jobTrackId, jobTracks.id))
-    .leftJoin(resumes, eq(resumes.id, jobTracks.resumeId))
-    .leftJoin(assets, eq(assets.id, interviews.transcriptAssetId))
+    .leftJoin(resumes, and(eq(resumes.id, jobTracks.resumeId), eq(resumes.userId, userId)))
+    .leftJoin(assets, and(eq(assets.id, interviews.transcriptAssetId), eq(assets.userId, userId)))
     .where(and(eq(interviews.id, interviewId), eq(jobTracks.userId, userId))).limit(1);
   if (!interview) throw new Error("NOT_FOUND: interview was not found");
   const [faqRows, experienceRows, taskRows] = await Promise.all([
@@ -149,7 +149,7 @@ export async function getInterviewKnowledgeDetail(userId: string, interviewId: s
       experienceId: faqs.experienceId,
       experienceName: experiences.name,
     }).from(faqs)
-      .leftJoin(experiences, eq(experiences.id, faqs.experienceId))
+      .leftJoin(experiences, and(eq(experiences.id, faqs.experienceId), eq(experiences.userId, userId)))
       .where(and(eq(faqs.userId, userId), eq(faqs.sourceInterviewId, interview.id)))
       .orderBy(desc(faqs.createdAt)),
     interview.resumeId

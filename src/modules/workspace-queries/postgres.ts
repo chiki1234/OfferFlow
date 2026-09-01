@@ -152,7 +152,7 @@ async function readJobTrackDetail(
       version: jobTracks.version,
     }).from(jobTracks)
       .leftJoin(jobDescriptions, eq(jobDescriptions.jobTrackId, jobTracks.id))
-      .leftJoin(events, eq(events.jobTrackId, jobTracks.id))
+      .leftJoin(events, and(eq(events.jobTrackId, jobTracks.id), eq(events.userId, userId)))
       .where(and(eq(jobTracks.userId, userId), eq(jobTracks.id, jobTrackId)))
       .groupBy(jobTracks.id, jobDescriptions.textContent)
       .then((rows) => rows[0] ?? null),
@@ -177,7 +177,7 @@ async function readJobTrackDetail(
       .innerJoin(assets, eq(assets.id, assetLinks.assetId))
       .innerJoin(jobDescriptions, eq(jobDescriptions.id, assetLinks.ownerId))
       .innerJoin(jobTracks, eq(jobTracks.id, jobDescriptions.jobTrackId))
-      .where(and(eq(assetLinks.ownerType, "job_description"), eq(jobTracks.id, jobTrackId), eq(jobTracks.userId, userId)))
+      .where(and(eq(assetLinks.ownerType, "job_description"), eq(jobTracks.id, jobTrackId), eq(jobTracks.userId, userId), eq(assets.userId, userId)))
       .orderBy(asc(assetLinks.sortOrder)),
     db.select({
       id: experiences.id,
@@ -187,8 +187,13 @@ async function readJobTrackDetail(
       .innerJoin(resumes, eq(resumes.id, jobTracks.resumeId))
       .innerJoin(resumeExperiences, eq(resumeExperiences.resumeId, resumes.id))
       .innerJoin(experiences, eq(experiences.id, resumeExperiences.experienceId))
-      .leftJoin(faqs, eq(faqs.experienceId, experiences.id))
-      .where(and(eq(jobTracks.id, jobTrackId), eq(jobTracks.userId, userId)))
+      .leftJoin(faqs, and(eq(faqs.experienceId, experiences.id), eq(faqs.userId, userId)))
+      .where(and(
+        eq(jobTracks.id, jobTrackId),
+        eq(jobTracks.userId, userId),
+        eq(resumes.userId, userId),
+        eq(experiences.userId, userId),
+      ))
       .groupBy(experiences.id, resumeExperiences.sortOrder)
       .orderBy(asc(resumeExperiences.sortOrder)),
   ]);
@@ -295,7 +300,7 @@ async function readJobTracks(
       version: jobTracks.version,
     }).from(jobTracks)
       .leftJoin(jobDescriptions, eq(jobDescriptions.jobTrackId, jobTracks.id))
-      .leftJoin(events, eq(events.jobTrackId, jobTracks.id))
+      .leftJoin(events, and(eq(events.jobTrackId, jobTracks.id), eq(events.userId, userId)))
       .where(and(...conditions))
       .groupBy(jobTracks.id, jobDescriptions.textContent)
       .orderBy(desc(jobTracks.updatedAt)),
@@ -306,9 +311,10 @@ async function readJobTracks(
     loaders.tasks(userId),
     db.selectDistinct({ jobTrackId: jobDescriptions.jobTrackId })
       .from(assetLinks)
+      .innerJoin(assets, eq(assets.id, assetLinks.assetId))
       .innerJoin(jobDescriptions, eq(jobDescriptions.id, assetLinks.ownerId))
       .innerJoin(jobTracks, eq(jobTracks.id, jobDescriptions.jobTrackId))
-      .where(and(eq(assetLinks.ownerType, "job_description"), eq(jobTracks.userId, userId))),
+      .where(and(eq(assetLinks.ownerType, "job_description"), eq(jobTracks.userId, userId), eq(assets.userId, userId))),
   ]);
   const counts = { planned: 0, active: 0, ended: 0 };
   for (const row of countsRows) counts[row.lifecycle] = row.count;

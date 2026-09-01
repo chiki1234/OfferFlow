@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { config } from "dotenv";
 import { getDatabaseRuntime } from "../src/db/runtime";
+import { users } from "../src/db/schema";
 import { commitFaqBatch, createExperience, setResumeExperiences } from "../src/modules/interview-knowledge/service";
 import { getExperienceDetail, getInterviewKnowledgeDetail } from "../src/modules/interview-knowledge/queries";
 import { getJobWorkflow } from "../src/modules/job-workflow/composition";
@@ -18,6 +19,20 @@ const actor = { userId };
 try {
   const now = new Date();
   const workflow = getJobWorkflow();
+  const otherUserId = randomUUID();
+  const otherActor = { userId: otherUserId };
+  await getDatabaseRuntime().db.insert(users).values({
+    id: otherUserId,
+    email: `${otherUserId}@example.invalid`,
+    timezone: "Asia/Shanghai",
+  });
+  const otherJob = await workflow.execute({
+    type: "create_job_track",
+    idempotencyKey: randomUUID(),
+    companyName: "另一位用户的公司",
+    roleName: "隔离验证岗位",
+    jobDescription: { text: "该内容不得出现在主用户的任何读取结果中。" },
+  }, otherActor);
   const resume = await uploadResumeVersion({
     userId,
     name: "CI 集成验证简历",
@@ -117,12 +132,14 @@ try {
   }, actor);
 
   const queries = getWorkspaceQueries();
-  const [dashboard, calendar, detail, interviewDetail, experienceDetail] = await Promise.all([
+  const [dashboard, calendar, detail, interviewDetail, experienceDetail, primaryJobs, otherJobs] = await Promise.all([
     queries.read({ type: "get_dashboard", now: now.toISOString() }, actor),
     queries.read({ type: "get_calendar_week", startAt: isoOffset(now, -6), endAt: isoOffset(now, 48) }, actor),
     queries.read({ type: "get_job_track_detail", jobTrackId: created.jobTrack.id }, actor),
     getInterviewKnowledgeDetail(userId, pastInterview.interview.id),
     getExperienceDetail(userId, experience.id),
+    queries.read({ type: "list_job_tracks" }, actor),
+    queries.read({ type: "list_job_tracks" }, otherActor),
   ]);
 
   assert.equal(detail.selectedResume?.id, resume.id);
@@ -137,6 +154,12 @@ try {
   assert.equal(interviewDetail.interview.transcriptAssetId, transcript.id);
   assert.equal(interviewDetail.faqs.length, 1);
   assert.equal(experienceDetail.faqs.length, 1);
+  assert.ok(!primaryJobs.items.some((item) => item.id === otherJob.jobTrack.id));
+  assert.ok(otherJobs.items.some((item) => item.id === otherJob.jobTrack.id));
+  await assert.rejects(
+    queries.read({ type: "get_job_track_detail", jobTrackId: otherJob.jobTrack.id }, actor),
+    /NOT_FOUND/,
+  );
   console.log("Real PostgreSQL + object-storage domain smoke test passed");
 } finally {
   await getDatabaseRuntime().close();
