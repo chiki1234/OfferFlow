@@ -6,6 +6,7 @@ import { z } from "zod";
 import { discardStagedJobDescriptionImages, stageJobDescriptionImages, type StagedJobDescriptionImage } from "@/modules/job-description-assets/service";
 import { getJobWorkflow } from "@/modules/job-workflow/composition";
 import { getCurrentActor } from "@/shared/actor/current-actor";
+import { logServerError } from "@/shared/logging/server-error";
 
 const createJobTrackSchema = z.object({
   idempotencyKey: z.string().min(8),
@@ -45,7 +46,7 @@ export async function quickImportJobTracksAction(
       entries,
     }, getCurrentActor());
   } catch (error) {
-    console.error("Failed to quick import jobs", error);
+    logServerError("Failed to quick import jobs", error);
     return { error: "导入失败，每行请使用“公司｜岗位”格式。" };
   }
   revalidatePath("/");
@@ -103,7 +104,7 @@ export async function createJobTrackAction(
     }
   } catch (error) {
     if (!jobCreated) await discardStagedJobDescriptionImages(getCurrentActor().userId, staged).catch(() => undefined);
-    console.error("Failed to create job track", error);
+    logServerError("Failed to create job track", error);
     return { error: jobCreated ? "岗位已保存为待投递，但记录投递失败；请进入详情页补记投递。" : "保存失败，请检查 JD 图片，并确认数据库和对象存储已经启动。" };
   }
 

@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { commitFaqBatch, createExperience, deleteFaq, setResumeExperiences, updateExperience, updateFaq } from "@/modules/interview-knowledge/service";
 import { getCurrentActor } from "@/shared/actor/current-actor";
+import { logServerError } from "@/shared/logging/server-error";
 
 export type KnowledgeActionState = { error: string | null; success: string | null };
 
@@ -14,7 +15,7 @@ export async function createExperienceAction(_state: KnowledgeActionState, formD
     revalidatePath("/faq");
     return { error: null, success: "经历已保存。" };
   } catch (error) {
-    console.error("Failed to create experience", error);
+    logServerError("Failed to create experience", error);
     return { error: "经历保存失败，请检查输入。", success: null };
   }
 }
@@ -28,7 +29,7 @@ export async function updateExperienceAction(_state: KnowledgeActionState, formD
     revalidatePath("/interviews/[id]", "page");
     return { error: null, success: "经历已更新。" };
   } catch (error) {
-    console.error("Failed to update experience", error);
+    logServerError("Failed to update experience", error);
     return { error: "经历更新失败，请检查输入。", success: null };
   }
 }
@@ -60,7 +61,7 @@ export async function commitFaqBatchAction(_state: KnowledgeActionState, formDat
     revalidatePath(`/interviews/${data.interviewId}`);
     return { error: null, success: `已导入 ${items.length} 条 FAQ。` };
   } catch (error) {
-    console.error("Failed to commit FAQ batch", error);
+    logServerError("Failed to commit FAQ batch", error);
     return { error: "FAQ 导入失败，请检查分类和经历绑定。", success: null };
   }
 }
@@ -73,7 +74,7 @@ export async function setResumeExperiencesAction(_state: KnowledgeActionState, f
     revalidatePath("/faq");
     return { error: null, success: "简历与经历的关联已更新。" };
   } catch (error) {
-    console.error("Failed to link resume experiences", error);
+    logServerError("Failed to link resume experiences", error);
     return { error: "关联保存失败。", success: null };
   }
 }
@@ -97,7 +98,7 @@ export async function updateFaqAction(_state: KnowledgeActionState, formData: Fo
     revalidatePath("/interviews/[id]", "page");
     return { error: null, success: "FAQ 已更新。" };
   } catch (error) {
-    console.error("Failed to update FAQ", error);
+    logServerError("Failed to update FAQ", error);
     return { error: "FAQ 更新失败。", success: null };
   }
 }
@@ -110,7 +111,7 @@ export async function deleteFaqAction(_state: KnowledgeActionState, formData: Fo
     revalidatePath("/interviews/[id]", "page");
     return { error: null, success: "FAQ 已删除。" };
   } catch (error) {
-    console.error("Failed to delete FAQ", error);
+    logServerError("Failed to delete FAQ", error);
     return { error: "FAQ 删除失败。", success: null };
   }
 }

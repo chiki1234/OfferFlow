@@ -8,6 +8,7 @@ import { getJobWorkflow } from "@/modules/job-workflow/composition";
 import { uploadResumeVersion } from "@/modules/resume-library/service";
 import { discardTranscriptAsset, getInterviewTranscriptAssetForCleanup, stageTranscriptAsset, type StagedTranscriptAsset } from "@/modules/transcript-assets/service";
 import { getCurrentActor } from "@/shared/actor/current-actor";
+import { logServerError } from "@/shared/logging/server-error";
 
 export type JobDetailActionState = { error: string | null; success: string | null };
 
@@ -177,9 +178,9 @@ export async function jobDetailAction(
           if (staged && result.interview.transcriptAssetId !== staged.id) {
             const unusedAsset = staged;
             staged = null;
-            await discardTranscriptAsset(actor.userId, unusedAsset).catch((cleanupError) => console.error("Failed to clean up unused transcript asset", cleanupError));
+            await discardTranscriptAsset(actor.userId, unusedAsset).catch((cleanupError) => logServerError("Failed to clean up unused transcript asset", cleanupError));
           } else if (staged && previousAsset && previousAsset.id !== staged.id) {
-            await discardTranscriptAsset(actor.userId, previousAsset).catch((cleanupError) => console.error("Failed to clean up replaced transcript asset", cleanupError));
+            await discardTranscriptAsset(actor.userId, previousAsset).catch((cleanupError) => logServerError("Failed to clean up replaced transcript asset", cleanupError));
           }
         } catch (error) {
           await discardTranscriptAsset(actor.userId, staged).catch(() => undefined);
@@ -344,7 +345,7 @@ export async function jobDetailAction(
           idempotencyKey: base.data.idempotencyKey,
           jobTrackId: base.data.jobTrackId,
         }, actor);
-        await discardStagedJobDescriptionImages(actor.userId, descriptionAssets).catch((cleanupError) => console.error("Failed to clean up deleted JD assets", cleanupError));
+        await discardStagedJobDescriptionImages(actor.userId, descriptionAssets).catch((cleanupError) => logServerError("Failed to clean up deleted JD assets", cleanupError));
         revalidatePath("/");
         revalidatePath("/jobs");
         redirect("/jobs?tab=planned");
@@ -352,7 +353,7 @@ export async function jobDetailAction(
     }
   } catch (error) {
     if (isRedirectError(error)) throw error;
-    console.error("Job detail action failed", error);
+    logServerError("Job detail action failed", error);
     return { error: error instanceof z.ZodError ? "请检查输入内容。" : "操作失败，请重试。", success: null };
   }
 }

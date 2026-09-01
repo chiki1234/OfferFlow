@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getJobWorkflow } from "@/modules/job-workflow/composition";
 import { getCurrentActor } from "@/shared/actor/current-actor";
+import { logServerError } from "@/shared/logging/server-error";
 
 export type QuickActionState = { error: string | null; success: string | null };
 
@@ -35,7 +36,7 @@ export async function createQuickTaskAction(_state: QuickActionState, formData: 
     revalidateAll(data.jobTrackId || undefined);
     return { error: null, success: "待办已创建。" };
   } catch (error) {
-    console.error("Quick task action failed", error);
+    logServerError("Quick task action failed", error);
     return { error: "待办创建失败，请检查输入。", success: null };
   }
 }
@@ -47,7 +48,7 @@ export async function updateQuickTaskAction(_state: QuickActionState, formData: 
     revalidateAll();
     return { error: null, success: data.operation === "complete" ? "待办已完成。" : "待办已取消。" };
   } catch (error) {
-    console.error("Quick task update failed", error);
+    logServerError("Quick task update failed", error);
     return { error: "待办操作失败，请刷新后重试。", success: null };
   }
 }
@@ -72,7 +73,7 @@ export async function recordQuickProgressAction(_state: QuickActionState, formDa
     revalidateAll(base.jobTrackId);
     return { error: null, success: "进展已记录。" };
   } catch (error) {
-    console.error("Quick progress action failed", error);
+    logServerError("Quick progress action failed", error);
     return { error: "进展记录失败，请检查时间和输入内容。", success: null };
   }
 }
