@@ -1,6 +1,7 @@
 # dependencies
 node_modules/
 .pnpm-store/
+.git-codex-backup/
 
 # next.js
 .next/
