@@ -41,7 +41,7 @@ Copy-Item .env.example .env.local
 
 打开 <http://localhost:3000>。
 
-服务就绪检查：<http://localhost:3000/api/health>。数据库和私有对象存储均可用时返回 `200`。
+服务就绪检查：<http://localhost:3000/api/health>。认证配置、数据库和私有对象存储均可用时返回 `200`，并分别报告三项非敏感检查结果。
 
 当前认证入口是显式的本地单用户模式：`AUTH_MODE=local` 会把所有请求映射到 `APP_USER_ID`。开发环境可直接使用；生产环境默认拒绝启动业务请求，只有受信任、访问边界已由反向代理或内网控制的单用户部署，才可显式设置 `ALLOW_LOCAL_AUTH_IN_PRODUCTION=true`。公开部署前必须先接入真正的登录与会话方案，不能把这个开关当作登录功能。
 
