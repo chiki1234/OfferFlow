@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { BriefcaseBusiness, CalendarDays, CircleHelp, LayoutDashboard, Plus } from "lucide-react";
+import { BriefcaseBusiness, CalendarDays, CircleHelp, Download, LayoutDashboard, Plus } from "lucide-react";
 
 const navigation = [
   { href: "/", label: "工作台", icon: LayoutDashboard },
@@ -30,6 +30,7 @@ export function WorkspaceShell({ children }: { children: React.ReactNode }) {
         <div className="sidebar-note">
           <strong>一次记录，处处同步</strong>
           <p>岗位、日历和面试知识共享同一份上下文。</p>
+          <a href="/api/export"><Download size={14} />导出我的数据</a>
         </div>
       </aside>
       <div className="workspace-content">{children}</div>
