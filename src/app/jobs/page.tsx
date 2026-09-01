@@ -7,6 +7,7 @@ import { getResumeOptions } from "@/modules/resume-library/queries";
 import { CreateJobForm } from "./create-job-form";
 import { QuickImportForm } from "./quick-import-form";
 import type { JobTrackListItem } from "@/modules/workspace-queries/interface";
+import { SubmitPlannedJobForm } from "./submit-planned-job-form";
 
 export const dynamic = "force-dynamic";
 
@@ -30,6 +31,7 @@ export default async function JobsPage({
     getWorkspaceQueries().read({ type: "list_job_tracks", lifecycle: selected }, actor),
     getResumeOptions(actor.userId),
   ]);
+  const currentLocal = toShanghaiLocalInput(new Date());
 
   return (
     <main className="page-stack">
@@ -70,7 +72,7 @@ export default async function JobsPage({
                 <JobGroup label="待行动" hint="有明确下一步需要完成" items={view.items.filter((job) => job.actionState === "action_required")} />
                 <JobGroup label="等待中" hint="当前步骤已完成，等待公司进展" items={view.items.filter((job) => job.actionState === "waiting")} />
               </>
-            ) : view.items.map((job) => <JobCard job={job} key={job.id} />)}
+            ) : view.items.map((job) => <JobCard job={job} resumes={resumes} currentLocal={currentLocal} key={job.id} />)}
           </div>
         </section>
 
@@ -91,12 +93,12 @@ function JobGroup({ label, hint, items }: { label: string; hint: string; items: 
   </section>;
 }
 
-function JobCard({ job }: { job: JobTrackListItem }) {
-  return <Link className="job-card" href={`/jobs/${job.id}`}>
-    <div className="job-card-heading">
+function JobCard({ job, resumes = [], currentLocal = "" }: { job: JobTrackListItem; resumes?: Array<{ id: string; name: string }>; currentLocal?: string }) {
+  return <article className="job-card">
+    <Link className="job-card-heading" href={`/jobs/${job.id}`}>
       <div><span className="company-name">{job.companyName}</span><h2>{job.roleName}</h2></div>
       <ArrowUpRight size={19} />
-    </div>
+    </Link>
     <div className="job-meta-row">
       <span className={job.hasJobDescription ? "complete" : "missing"}><FileCheck2 size={15} /> {job.hasJobDescription ? "JD 已保存" : "待补充 JD"}</span>
       <span>{job.lifecycle === "planned" ? "尚未投递" : job.hasResume ? "已绑定简历" : "待补充简历"}</span>
@@ -106,7 +108,8 @@ function JobCard({ job }: { job: JobTrackListItem }) {
       {job.attentionFlags.includes("waiting_long") && <span className="job-attention">等待较久</span>}
       {job.lifecycle === "ended" && <span>{endReasonLabel(job.endReason)}{job.endedAt ? ` · ${formatDate(job.endedAt)}` : ""}</span>}
     </div>
-  </Link>;
+    {job.lifecycle === "planned" && <details className="job-card-submit"><summary>标记已投递</summary><SubmitPlannedJobForm jobTrackId={job.id} resumes={resumes} token={randomUUID()} currentLocal={currentLocal} /></details>}
+  </article>;
 }
 
 function endReasonLabel(reason: string | null) {
@@ -115,4 +118,8 @@ function endReasonLabel(reason: string | null) {
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat("zh-CN", { timeZone: "Asia/Shanghai", year: "numeric", month: "numeric", day: "numeric" }).format(new Date(value));
+}
+
+function toShanghaiLocalInput(value: Date) {
+  return new Date(value.getTime() + 8 * 60 * 60 * 1000).toISOString().slice(0, 16);
 }
