@@ -3,6 +3,7 @@ import { deriveJobTrackStatus } from "@/modules/workspace-queries/derive-job-tra
 import { deriveJobTrackCurrentNext } from "@/modules/workspace-queries/derive-job-track-current-next";
 import { markCalendarConflicts } from "@/modules/workspace-queries/calendar-conflicts";
 import { sortDashboardActionItems } from "@/modules/workspace-queries/dashboard-priority";
+import { findImminentInterviewPreparationTasks } from "@/modules/workspace-queries/dashboard-preparation";
 
 describe("deriveJobTrackStatus", () => {
   it("未完成且逾期的测评会要求行动并标记逾期", () => {
@@ -221,5 +222,30 @@ describe("sortDashboardActionItems", () => {
     ]);
 
     expect(result.map((item) => item.id)).toEqual(["overdue-earlier", "overdue-later", "review-old"]);
+  });
+});
+
+describe("findImminentInterviewPreparationTasks", () => {
+  it("只把明日硬事件前仍开放的面试准备任务加入行动队列", () => {
+    const tasks = [
+      { id: "include", kind: "interview_prep", interviewId: "tomorrow", completedAt: null, cancelledAt: null },
+      { id: "completed", kind: "interview_prep", interviewId: "tomorrow", completedAt: "2026-09-01T00:00:00.000Z", cancelledAt: null },
+      { id: "far", kind: "interview_prep", interviewId: "next-week", completedAt: null, cancelledAt: null },
+      { id: "generic", kind: "generic", interviewId: null, completedAt: null, cancelledAt: null },
+    ] as const;
+    const interviews = [
+      { id: "tomorrow", status: "scheduled", startAt: "2026-09-03T02:00:00.000Z" },
+      { id: "next-week", status: "scheduled", startAt: "2026-09-08T02:00:00.000Z" },
+    ] as const;
+
+    const result = findImminentInterviewPreparationTasks(
+      tasks,
+      interviews,
+      new Date("2026-09-02T04:00:00.000Z"),
+      new Date("2026-09-03T15:59:59.999Z"),
+    );
+
+    expect(result.map((item) => item.task.id)).toEqual(["include"]);
+    expect(result[0]?.dueAt).toBe("2026-09-03T02:00:00.000Z");
   });
 });

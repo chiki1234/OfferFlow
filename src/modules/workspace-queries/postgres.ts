@@ -5,6 +5,7 @@ import { deriveJobTrackStatus, type JobTrackFacts } from "./derive-job-track-sta
 import { deriveJobTrackCurrentNext, type JobTrackCurrentNextFacts } from "./derive-job-track-current-next";
 import { markCalendarConflicts } from "./calendar-conflicts";
 import { sortDashboardActionItems } from "./dashboard-priority";
+import { findImminentInterviewPreparationTasks } from "./dashboard-preparation";
 import type {
   CalendarItem,
   DashboardActionItem,
@@ -393,6 +394,11 @@ async function readDashboard(
     loaders.tasks(userId),
   ]);
   const todayEnd = endOfTodayInShanghai(now);
+  const tomorrowEnd = new Date(todayEnd.getTime() + 24 * 60 * 60 * 1000);
+  const dueTaskRows = taskRows.filter((row) => row.kind !== "assessment" && !row.completedAt && !row.cancelledAt && row.deadlineAt && row.deadlineAt <= todayEnd);
+  const dueTaskIds = new Set(dueTaskRows.map((row) => row.id));
+  const imminentPreparationTasks = findImminentInterviewPreparationTasks(taskRows, interviewRows, now, tomorrowEnd)
+    .filter(({ task }) => !dueTaskIds.has(task.id));
   const todayItems = sortDashboardActionItems([
     ...assessmentRows.filter((row) => row.status === "pending")
       .map((row) => ({ row, dueAt: row.timingType === "deadline" ? row.deadlineAt : row.startAt }))
@@ -407,8 +413,7 @@ async function readDashboard(
         dueAt: dueAt.toISOString(),
         overdue: dueAt < now,
       })),
-    ...taskRows.filter((row) => row.kind !== "assessment" && !row.completedAt && !row.cancelledAt && row.deadlineAt && row.deadlineAt <= todayEnd)
-      .map((row) => ({
+    ...dueTaskRows.map((row) => ({
         id: row.id,
         sourceType: "task" as const,
         jobTrackId: row.jobTrackId,
@@ -418,6 +423,16 @@ async function readDashboard(
         dueAt: (row.deadlineAt as Date).toISOString(),
         overdue: (row.deadlineAt as Date) < now,
       })),
+    ...imminentPreparationTasks.map(({ task: row, dueAt }) => ({
+      id: row.id,
+      sourceType: "task" as const,
+      jobTrackId: row.jobTrackId,
+      companyName: row.companyName,
+      roleName: row.roleName,
+      title: row.title,
+      dueAt,
+      overdue: false,
+    })),
     ...interviewRows.filter((row) => row.status === "scheduled" && row.startAt <= now && !row.reviewedAt)
       .map((row) => ({
         id: row.id,
