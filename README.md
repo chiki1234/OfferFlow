@@ -16,7 +16,7 @@
 - 日历时间冲突提示和通用进展 Timeline 记录
 - PostgreSQL schema、MinIO 私有对象存储和四份 migration
 - 真实数据驱动的工作台关注区、岗位“当前 / 下一步”、分组列表、可翻周日历和 Timeline
-- GitHub Actions 持续运行 Lint、测试、类型检查和生产构建
+- GitHub Actions 持续运行 Lint、测试、类型检查、生产构建，并用真实 PostgreSQL + MinIO 执行迁移、健康检查与导出烟测
 - 登录用户可从侧边栏导出完整结构化 JSON（私有文件以受保护下载路径列入清单）
 
 ## 本地启动

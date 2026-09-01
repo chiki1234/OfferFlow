@@ -8,8 +8,23 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_DB: job_hunting
+          POSTGRES_USER: job_hunting
+          POSTGRES_PASSWORD: job_hunting
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U job_hunting -d job_hunting"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     env:
       DATABASE_URL: postgresql://job_hunting:job_hunting@localhost:5432/job_hunting
+      APP_URL: http://localhost:3000
       APP_USER_ID: 00000000-0000-4000-8000-000000000001
       S3_ENDPOINT: http://localhost:9000
       S3_REGION: us-east-1
@@ -26,7 +41,45 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: Start private object storage
+        run: >-
+          docker run --detach --name job-hunting-minio --publish 9000:9000
+          --env MINIO_ROOT_USER=minio
+          --env MINIO_ROOT_PASSWORD=local-ci-placeholder
+          minio/minio:latest server /data
+      - name: Prepare object-storage bucket
+        run: |
+          for attempt in {1..30}; do
+            if pnpm storage:ensure; then
+              exit 0
+            fi
+            sleep 2
+          done
+          docker logs job-hunting-minio
+          exit 1
       - run: pnpm lint
       - run: pnpm test
       - run: pnpm typecheck
       - run: pnpm build
+      - name: Migrate and seed PostgreSQL
+        run: |
+          pnpm db:migrate
+          pnpm db:seed
+      - name: Smoke-test production runtime
+        run: |
+          pnpm start > /tmp/job-hunting-web.log 2>&1 &
+          app_pid=$!
+          for attempt in {1..30}; do
+            if curl --fail --silent --show-error http://127.0.0.1:3000/api/health; then
+              curl --fail --silent --show-error http://127.0.0.1:3000/ > /dev/null
+              curl --fail --silent --show-error http://127.0.0.1:3000/api/export > /tmp/job-hunting-export.json
+              node --input-type=module -e "import {readFile} from 'node:fs/promises'; const d=JSON.parse(await readFile('/tmp/job-hunting-export.json','utf8')); if(d.format!=='job-hunting-web-export') process.exit(1)"
+              kill "$app_pid"
+              exit 0
+            fi
+            sleep 2
+          done
+          cat /tmp/job-hunting-web.log
+          docker logs job-hunting-minio
+          kill "$app_pid" || true
+          exit 1
