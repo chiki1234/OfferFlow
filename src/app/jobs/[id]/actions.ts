@@ -3,10 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
-import { uploadJobDescriptionImages } from "@/modules/job-description-assets/service";
+import { discardStagedJobDescriptionImages, listJobDescriptionAssetsForCleanup, uploadJobDescriptionImages } from "@/modules/job-description-assets/service";
 import { getJobWorkflow } from "@/modules/job-workflow/composition";
 import { uploadResumeVersion } from "@/modules/resume-library/service";
-import { discardTranscriptAsset, stageTranscriptAsset, type StagedTranscriptAsset } from "@/modules/transcript-assets/service";
+import { discardTranscriptAsset, getInterviewTranscriptAssetForCleanup, stageTranscriptAsset, type StagedTranscriptAsset } from "@/modules/transcript-assets/service";
 import { getCurrentActor } from "@/shared/actor/current-actor";
 
 export type JobDetailActionState = { error: string | null; success: string | null };
@@ -163,9 +163,10 @@ export async function jobDetailAction(
         const hasFile = transcriptFile instanceof File && transcriptFile.size > 0;
         if (!transcriptText && !hasFile) return { error: "请粘贴转录文本或上传转录文件。", success: null };
         let staged: StagedTranscriptAsset | null = null;
+        const previousAsset = hasFile ? await getInterviewTranscriptAssetForCleanup({ userId: actor.userId, interviewId }) : null;
         try {
           if (hasFile) staged = await stageTranscriptAsset({ userId: actor.userId, interviewId, file: transcriptFile });
-          await workflow.execute({
+          const result = await workflow.execute({
             type: "save_interview_transcript",
             idempotencyKey: base.data.idempotencyKey,
             interviewId,
@@ -173,6 +174,13 @@ export async function jobDetailAction(
             transcriptAssetId: staged?.id,
             savedAt: new Date().toISOString(),
           }, actor);
+          if (staged && result.interview.transcriptAssetId !== staged.id) {
+            const unusedAsset = staged;
+            staged = null;
+            await discardTranscriptAsset(actor.userId, unusedAsset).catch((cleanupError) => console.error("Failed to clean up unused transcript asset", cleanupError));
+          } else if (staged && previousAsset && previousAsset.id !== staged.id) {
+            await discardTranscriptAsset(actor.userId, previousAsset).catch((cleanupError) => console.error("Failed to clean up replaced transcript asset", cleanupError));
+          }
         } catch (error) {
           await discardTranscriptAsset(actor.userId, staged).catch(() => undefined);
           throw error;
@@ -330,11 +338,13 @@ export async function jobDetailAction(
         return { error: null, success: "进展已记录。" };
       }
       case "delete_planned_job_track": {
+        const descriptionAssets = await listJobDescriptionAssetsForCleanup({ userId: actor.userId, jobTrackId: base.data.jobTrackId });
         await workflow.execute({
           type: "delete_planned_job_track",
           idempotencyKey: base.data.idempotencyKey,
           jobTrackId: base.data.jobTrackId,
         }, actor);
+        await discardStagedJobDescriptionImages(actor.userId, descriptionAssets).catch((cleanupError) => console.error("Failed to clean up deleted JD assets", cleanupError));
         revalidatePath("/");
         revalidatePath("/jobs");
         redirect("/jobs?tab=planned");

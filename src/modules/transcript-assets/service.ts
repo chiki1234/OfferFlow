@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { DeleteObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
 import { and, eq } from "drizzle-orm";
 import { getPrivateObjectStorage } from "@/adapters/storage/private-object-storage";
-import { assets } from "@/db/schema";
+import { assets, interviews, jobTracks } from "@/db/schema";
 import { getDatabaseRuntime } from "@/db/runtime";
 import { validateTranscriptUpload } from "./validation";
 
@@ -38,4 +38,18 @@ export async function discardTranscriptAsset(userId: string, asset: StagedTransc
   await getDatabaseRuntime().db.delete(assets).where(and(eq(assets.id, asset.id), eq(assets.userId, userId)));
   const storage = getPrivateObjectStorage();
   await storage.client.send(new DeleteObjectCommand({ Bucket: storage.bucket, Key: asset.storageKey })).catch(() => undefined);
+}
+
+export async function getInterviewTranscriptAssetForCleanup(input: { userId: string; interviewId: string }): Promise<StagedTranscriptAsset | null> {
+  const [asset] = await getDatabaseRuntime().db.select({
+    id: assets.id,
+    storageKey: assets.storageKey,
+    originalName: assets.originalName,
+    mimeType: assets.mimeType,
+  }).from(interviews)
+    .innerJoin(jobTracks, eq(jobTracks.id, interviews.jobTrackId))
+    .innerJoin(assets, eq(assets.id, interviews.transcriptAssetId))
+    .where(and(eq(interviews.id, input.interviewId), eq(jobTracks.userId, input.userId), eq(assets.userId, input.userId)))
+    .limit(1);
+  return asset ?? null;
 }

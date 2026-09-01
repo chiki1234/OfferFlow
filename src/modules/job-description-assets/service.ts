@@ -44,6 +44,24 @@ export async function discardStagedJobDescriptionImages(userId: string, staged: 
   await Promise.all(staged.map((item) => storage.client.send(new DeleteObjectCommand({ Bucket: storage.bucket, Key: item.storageKey })).catch(() => undefined)));
 }
 
+export async function listJobDescriptionAssetsForCleanup(input: { userId: string; jobTrackId: string }): Promise<StagedJobDescriptionImage[]> {
+  return getDatabaseRuntime().db.select({
+    id: assets.id,
+    storageKey: assets.storageKey,
+    originalName: assets.originalName,
+    mimeType: assets.mimeType,
+  }).from(assetLinks)
+    .innerJoin(assets, eq(assets.id, assetLinks.assetId))
+    .innerJoin(jobDescriptions, eq(jobDescriptions.id, assetLinks.ownerId))
+    .innerJoin(jobTracks, eq(jobTracks.id, jobDescriptions.jobTrackId))
+    .where(and(
+      eq(assetLinks.ownerType, "job_description"),
+      eq(jobTracks.id, input.jobTrackId),
+      eq(jobTracks.userId, input.userId),
+      eq(assets.userId, input.userId),
+    ));
+}
+
 export async function uploadJobDescriptionImages(input: { userId: string; jobTrackId: string; files: File[] }) {
   const validated = validateJobDescriptionImages(input.files);
   const db = getDatabaseRuntime().db;
