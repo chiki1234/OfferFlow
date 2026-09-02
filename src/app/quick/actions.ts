@@ -32,7 +32,7 @@ export async function createQuickTaskAction(_state: QuickActionState, formData: 
       kind: data.interviewId ? "interview_prep" : "generic",
       title: data.title,
       deadlineAt: data.deadlineAt ? toIso(data.deadlineAt) : undefined,
-    }, getCurrentActor());
+    }, await getCurrentActor());
     revalidateAll(data.jobTrackId || undefined);
     return { error: null, success: "待办已创建。" };
   } catch (error) {
@@ -44,7 +44,7 @@ export async function createQuickTaskAction(_state: QuickActionState, formData: 
 export async function updateQuickTaskAction(_state: QuickActionState, formData: FormData): Promise<QuickActionState> {
   try {
     const data = z.object({ idempotencyKey: z.string().min(8), taskId: z.uuid(), operation: z.enum(["complete", "cancel"]) }).parse({ idempotencyKey: formData.get("idempotencyKey"), taskId: formData.get("taskId"), operation: formData.get("operation") });
-    await getJobWorkflow().execute(data.operation === "complete" ? { type: "complete_task", idempotencyKey: data.idempotencyKey, taskId: data.taskId, completedAt: new Date().toISOString() } : { type: "cancel_task", idempotencyKey: data.idempotencyKey, taskId: data.taskId, cancelledAt: new Date().toISOString() }, getCurrentActor());
+    await getJobWorkflow().execute(data.operation === "complete" ? { type: "complete_task", idempotencyKey: data.idempotencyKey, taskId: data.taskId, completedAt: new Date().toISOString() } : { type: "cancel_task", idempotencyKey: data.idempotencyKey, taskId: data.taskId, cancelledAt: new Date().toISOString() }, await getCurrentActor());
     revalidateAll();
     return { error: null, success: data.operation === "complete" ? "待办已完成。" : "待办已取消。" };
   } catch (error) {
@@ -57,7 +57,7 @@ export async function recordQuickProgressAction(_state: QuickActionState, formDa
   try {
     const base = z.object({ idempotencyKey: z.string().min(8), jobTrackId: z.uuid(), progressType: z.enum(["assessment", "interview", "rejection", "generic"]) }).parse({ idempotencyKey: formData.get("idempotencyKey"), jobTrackId: formData.get("jobTrackId"), progressType: formData.get("progressType") });
     const workflow = getJobWorkflow();
-    const actor = getCurrentActor();
+    const actor = await getCurrentActor();
     if (base.progressType === "assessment") {
       const data = z.object({ assessmentKind: z.enum(["assessment", "written_test"]), title: z.string().trim().min(1).max(255), timingType: z.enum(["deadline", "fixed_slot"]), deadlineAt: z.string().optional(), startAt: z.string().optional(), endAt: z.string().optional(), receivedAt: z.string().min(1) }).parse({ assessmentKind: formData.get("assessmentKind"), title: formData.get("title"), timingType: formData.get("timingType"), deadlineAt: formData.get("deadlineAt") || undefined, startAt: formData.get("startAt") || undefined, endAt: formData.get("endAt") || undefined, receivedAt: formData.get("receivedAt") });
       const timing = data.timingType === "deadline" ? { type: "deadline" as const, deadlineAt: toIso(z.string().min(1).parse(data.deadlineAt)) } : { type: "fixed_slot" as const, startAt: toIso(z.string().min(1).parse(data.startAt)), endAt: toIso(z.string().min(1).parse(data.endAt)) };

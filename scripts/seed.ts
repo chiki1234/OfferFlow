@@ -18,6 +18,7 @@ try {
     .insert(users)
     .values({
       id: userId,
+      name: "本地用户",
       email: "local@job-hunting.app",
       timezone: "Asia/Shanghai",
     })

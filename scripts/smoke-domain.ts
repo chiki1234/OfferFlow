@@ -23,6 +23,7 @@ try {
   const otherActor = { userId: otherUserId };
   await getDatabaseRuntime().db.insert(users).values({
     id: otherUserId,
+    name: "隔离测试用户",
     email: `${otherUserId}@example.invalid`,
     timezone: "Asia/Shanghai",
   });

@@ -12,7 +12,8 @@ export const dynamic = "force-dynamic";
 
 export default async function JobDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const view = await getWorkspaceQueries().read({ type: "get_job_track_detail", jobTrackId: id }, getCurrentActor()).catch((error: unknown) => {
+  const actor = await getCurrentActor();
+  const view = await getWorkspaceQueries().read({ type: "get_job_track_detail", jobTrackId: id }, actor).catch((error: unknown) => {
     if (isDomainNotFoundError(error)) notFound();
     throw error;
   });

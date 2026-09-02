@@ -1,5 +1,9 @@
+"use client";
+
 import Link from "next/link";
 import { BriefcaseBusiness, CalendarDays, CircleHelp, Download, LayoutDashboard, Plus } from "lucide-react";
+import { usePathname } from "next/navigation";
+import { LogoutButton } from "@/components/logout-button";
 
 const navigation = [
   { href: "/", label: "工作台", icon: LayoutDashboard },
@@ -9,6 +13,9 @@ const navigation = [
 ];
 
 export function WorkspaceShell({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+  if (pathname === "/login") return <>{children}</>;
+
   return (
     <div className="workspace-shell">
       <aside className="sidebar">
@@ -32,6 +39,7 @@ export function WorkspaceShell({ children }: { children: React.ReactNode }) {
           <p>岗位、日历和面试知识共享同一份上下文。</p>
           <a href="/api/export"><Download size={14} />导出我的数据</a>
         </div>
+        <LogoutButton />
       </aside>
       <div className="workspace-content">{children}</div>
       <Link className="floating-add" href="/quick" aria-label="打开全局快捷操作">
@@ -44,6 +52,7 @@ export function WorkspaceShell({ children }: { children: React.ReactNode }) {
             <span>{label}</span>
           </Link>
         ))}
+        <LogoutButton compact />
       </nav>
     </div>
   );

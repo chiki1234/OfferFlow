@@ -6,9 +6,10 @@ import { getWorkspaceQueries } from "@/modules/workspace-queries/composition";
 export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
+  const actor = await getCurrentActor();
   const view = await getWorkspaceQueries().read(
     { type: "get_dashboard" },
-    getCurrentActor(),
+    actor,
   );
   const reviewItems = view.todayItems.filter((item) => item.sourceType === "interview_review");
 

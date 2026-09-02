@@ -10,7 +10,8 @@ export const dynamic = "force-dynamic";
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const assetId = z.uuid().parse((await params).id);
-    const asset = await getOwnedAsset(getCurrentActor().userId, assetId);
+    const actor = await getCurrentActor();
+    const asset = await getOwnedAsset(actor.userId, assetId);
     const storage = getPrivateObjectStorage();
     const object = await storage.client.send(new GetObjectCommand({ Bucket: storage.bucket, Key: asset.storageKey }));
     if (!object.Body) return new Response(null, { status: 404 });

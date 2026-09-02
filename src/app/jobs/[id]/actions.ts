@@ -31,7 +31,7 @@ export async function jobDetailAction(
 
   try {
     const workflow = getJobWorkflow();
-    const actor = getCurrentActor();
+    const actor = await getCurrentActor();
     switch (base.data.intent) {
       case "update_context": {
         const data = z.object({

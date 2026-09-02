@@ -5,7 +5,8 @@ import { privateResponseHeaders } from "@/shared/http/private-response-headers";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const document = await exportUserData(getCurrentActor().userId);
+  const actor = await getCurrentActor();
+  const document = await exportUserData(actor.userId);
   const date = document.exportedAt.slice(0, 10);
   return new Response(JSON.stringify(document, null, 2), {
     headers: {

@@ -11,13 +11,14 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
   const now = new Date();
   const week = getShanghaiCalendarWeek(now, first(params.week));
   const currentWeekKey = getShanghaiCalendarWeek(now).key;
+  const actor = await getCurrentActor();
   const view = await getWorkspaceQueries().read(
     {
       type: "get_calendar_week",
       startAt: week.startAt,
       endAt: week.endAt,
     },
-    getCurrentActor(),
+    actor,
   );
   return (
     <main className="page-stack">

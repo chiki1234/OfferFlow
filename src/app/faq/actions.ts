@@ -11,7 +11,7 @@ export type KnowledgeActionState = { error: string | null; success: string | nul
 export async function createExperienceAction(_state: KnowledgeActionState, formData: FormData): Promise<KnowledgeActionState> {
   try {
     const data = z.object({ name: z.string().trim().min(1).max(255), content: z.string().trim().min(1) }).parse({ name: formData.get("name"), content: formData.get("content") });
-    await createExperience({ userId: getCurrentActor().userId, ...data });
+    await createExperience({ userId: (await getCurrentActor()).userId, ...data });
     revalidatePath("/faq");
     return { error: null, success: "经历已保存。" };
   } catch (error) {
@@ -23,7 +23,7 @@ export async function createExperienceAction(_state: KnowledgeActionState, formD
 export async function updateExperienceAction(_state: KnowledgeActionState, formData: FormData): Promise<KnowledgeActionState> {
   try {
     const data = z.object({ experienceId: z.uuid(), name: z.string().trim().min(1).max(255), content: z.string().trim().min(1).max(100000) }).parse({ experienceId: formData.get("experienceId"), name: formData.get("name"), content: formData.get("content") });
-    await updateExperience({ userId: getCurrentActor().userId, ...data });
+    await updateExperience({ userId: (await getCurrentActor()).userId, ...data });
     revalidatePath("/faq");
     revalidatePath(`/experiences/${data.experienceId}`);
     revalidatePath("/interviews/[id]", "page");
@@ -49,7 +49,7 @@ export async function commitFaqBatchAction(_state: KnowledgeActionState, formDat
       experienceId: z.uuid().nullable(),
     })).min(1).max(100).parse(JSON.parse(data.itemsJson));
     await commitFaqBatch({
-      userId: getCurrentActor().userId,
+      userId: (await getCurrentActor()).userId,
       idempotencyKey: data.idempotencyKey,
       interviewId: data.interviewId,
       committedAt: new Date().toISOString(),
@@ -70,7 +70,7 @@ export async function setResumeExperiencesAction(_state: KnowledgeActionState, f
   try {
     const resumeId = z.uuid().parse(formData.get("resumeId"));
     const experienceIds = formData.getAll("experienceIds").map(String).map((id) => z.uuid().parse(id));
-    await setResumeExperiences({ userId: getCurrentActor().userId, resumeId, experienceIds });
+    await setResumeExperiences({ userId: (await getCurrentActor()).userId, resumeId, experienceIds });
     revalidatePath("/faq");
     return { error: null, success: "简历与经历的关联已更新。" };
   } catch (error) {
@@ -89,7 +89,7 @@ export async function updateFaqAction(_state: KnowledgeActionState, formData: Fo
       kind: formData.get("kind"), category: formData.get("category"), experienceId: formData.get("experienceId") || undefined,
     });
     await updateFaq({
-      userId: getCurrentActor().userId,
+      userId: (await getCurrentActor()).userId,
       faqId: data.faqId,
       item: { question: data.question, answer: data.answer, kind: data.kind, category: data.category, experienceId: data.kind === "experience" ? data.experienceId ?? null : null },
     });
@@ -105,7 +105,7 @@ export async function updateFaqAction(_state: KnowledgeActionState, formData: Fo
 
 export async function deleteFaqAction(_state: KnowledgeActionState, formData: FormData): Promise<KnowledgeActionState> {
   try {
-    await deleteFaq({ userId: getCurrentActor().userId, faqId: z.uuid().parse(formData.get("faqId")) });
+    await deleteFaq({ userId: (await getCurrentActor()).userId, faqId: z.uuid().parse(formData.get("faqId")) });
     revalidatePath("/faq");
     revalidatePath("/experiences/[id]", "page");
     revalidatePath("/interviews/[id]", "page");

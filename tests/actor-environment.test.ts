@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { resolveActorFromEnvironment } from "@/shared/actor/actor-environment";
+import {
+  resolveActorFromEnvironment,
+  resolveAuthenticationMode,
+  validateAuthenticationEnvironment,
+} from "@/shared/actor/actor-environment";
 
 describe("resolveActorFromEnvironment", () => {
   const userId = "00000000-0000-4000-8000-000000000001";
@@ -39,14 +43,26 @@ describe("resolveActorFromEnvironment", () => {
     ).toEqual({ userId });
   });
 
-  it("拒绝尚未实现的认证模式", () => {
+  it("支持账号密码认证模式", () => {
+    expect(resolveAuthenticationMode({ AUTH_MODE: "password", NODE_ENV: "production" })).toBe("password");
     expect(() =>
-      resolveActorFromEnvironment({
-        APP_USER_ID: userId,
+      validateAuthenticationEnvironment({
+        APP_URL: "https://jobs.example.com",
         AUTH_MODE: "password",
-        NODE_ENV: "development",
+        AUTH_SECRET: "a-secure-authentication-secret-value",
+        NODE_ENV: "production",
       }),
-    ).toThrow('Unsupported AUTH_MODE "password"');
+    ).not.toThrow();
+  });
+
+  it("账号密码模式要求安全密钥和应用地址", () => {
+    expect(() =>
+      validateAuthenticationEnvironment({
+        APP_URL: "https://jobs.example.com",
+        AUTH_MODE: "password",
+        AUTH_SECRET: "too-short",
+      }),
+    ).toThrow("AUTH_SECRET must contain at least 32 characters");
   });
 
   it("本地单用户模式要求配置用户 ID", () => {

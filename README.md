@@ -14,7 +14,8 @@
 - 行动状态、逾期 / 等待较久标记、待复盘推导
 - Experience、Resume 关联、FAQ Block 批量解析、搜索筛选和知识库维护
 - 日历时间冲突提示和通用进展 Timeline 记录
-- PostgreSQL schema、MinIO 私有对象存储和四份 migration
+- Better Auth 账号密码登录、数据库会话、关闭公开注册、全站访问保护和退出登录
+- PostgreSQL schema、MinIO 私有对象存储和六份 migration
 - 真实数据驱动的工作台关注区、岗位“当前 / 下一步”、分组列表、可翻周日历和 Timeline
 - GitHub Actions 持续运行 Lint、测试、类型检查、生产构建，并用真实 PostgreSQL + MinIO 执行迁移、健康检查与导出烟测
 - CI 集成场景会真实执行简历 / Transcript 上传、投递、测评、面试、准备任务与 FAQ 知识回流，并从五个读取视图和双用户隔离场景反向验收
@@ -22,28 +23,36 @@
 
 ## 本地启动
 
-前置环境：Node.js 20.9+、pnpm、Docker Desktop。
+前置环境：Node.js 20.9+、pnpm。Windows 可直接使用项目内便携服务，不要求安装 Docker Desktop。
 
-```bash
+```powershell
 pnpm install
-cp .env.example .env.local
-docker compose up -d
+Copy-Item .env.example .env.local
+# 先修改 .env.local 中的数据库、MinIO 和 AUTH_SECRET 示例密钥
+pnpm services:setup
 pnpm db:migrate
-pnpm db:seed
+pnpm storage:ensure
+$env:INITIAL_USER_EMAIL="you@example.com"
+$env:INITIAL_USER_NAME="你的名字"
+$env:INITIAL_USER_PASSWORD="至少10位的安全密码"
+pnpm auth:create-user
 pnpm dev
 ```
 
-Windows PowerShell 可以用下面的命令复制环境文件：
+以后重新开机只需启动已有服务：
 
 ```powershell
-Copy-Item .env.example .env.local
+pnpm services:start
+pnpm dev
 ```
+
+需要关闭便携服务时运行 `pnpm services:stop`。便携版 PostgreSQL、MinIO 和本地数据都保存在被 Git 忽略的 `.runtime/` 中；下载脚本固定版本并校验 SHA-256。Docker 用户也可继续使用 `docker compose up -d`。
 
 打开 <http://localhost:3000>。
 
 服务就绪检查：<http://localhost:3000/api/health>。认证配置、数据库和私有对象存储均可用时返回 `200`，并分别报告三项非敏感检查结果。
 
-当前认证入口是显式的本地单用户模式：`AUTH_MODE=local` 会把所有请求映射到 `APP_USER_ID`。开发环境可直接使用；生产环境默认拒绝启动业务请求，只有受信任、访问边界已由反向代理或内网控制的单用户部署，才可显式设置 `ALLOW_LOCAL_AUTH_IN_PRODUCTION=true`。公开部署前必须先接入真正的登录与会话方案，不能把这个开关当作登录功能。
+默认认证入口是 `AUTH_MODE=password`：使用邮箱账号、scrypt 密码哈希和数据库会话，公开注册关闭，只能通过 `pnpm auth:create-user` 创建账号。`AUTH_MODE=local` 仅保留给 CI 和受信任的单用户开发环境；生产环境默认拒绝固定用户模式。
 
 生产容器镜像可以用 `docker build -t job-hunting-web .` 构建；运行时需注入 `.env.example` 中列出的环境变量。正式的多实例镜像构建还应通过安全的 CI secret 向 Dockerfile 的同名 build args 注入 `NEXT_SERVER_ACTIONS_ENCRYPTION_KEY` 与 `DEPLOYMENT_VERSION`。
 
@@ -70,4 +79,4 @@ pnpm test:integration # 需要已迁移的 PostgreSQL 与已创建 Bucket 的 Mi
 
 1. Release A：投递、测评、面试、待办、Timeline、工作台与周日历。
 2. Release B：Experience、Resume 关联、FAQ Block 解析与知识库。
-3. 选择并接入交互式认证方案；本地单用户模式和生产防误用边界已建立。
+3. 账号密码认证和本机真实依赖验收已完成；下一步是确定正式域名、反向代理和部署平台。

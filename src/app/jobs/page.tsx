@@ -26,7 +26,7 @@ export default async function JobsPage({
   const selected = lifecycleTabs.some((tab) => tab.key === params.tab)
     ? (params.tab as (typeof lifecycleTabs)[number]["key"])
     : "planned";
-  const actor = getCurrentActor();
+  const actor = await getCurrentActor();
   const [view, resumes] = await Promise.all([
     getWorkspaceQueries().read({ type: "list_job_tracks", lifecycle: selected }, actor),
     getResumeOptions(actor.userId),

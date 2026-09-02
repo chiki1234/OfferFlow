@@ -36,6 +36,13 @@
       "when": 1788248512379,
       "tag": "0004_puzzling_makkari",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1788319741905,
+      "tag": "0005_sharp_harpoon",
+      "breakpoints": true
     }
   ]
 }

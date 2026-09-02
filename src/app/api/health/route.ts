@@ -2,7 +2,7 @@ import { HeadBucketCommand } from "@aws-sdk/client-s3";
 import { sql } from "drizzle-orm";
 import { getPrivateObjectStorage } from "@/adapters/storage/private-object-storage";
 import { getDatabaseRuntime } from "@/db/runtime";
-import { getCurrentActor } from "@/shared/actor/current-actor";
+import { validateAuthenticationEnvironment } from "@/shared/actor/actor-environment";
 import { runReadinessChecks } from "@/shared/health/readiness-checks";
 
 export const dynamic = "force-dynamic";
@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   const checks = await runReadinessChecks({
     authentication: async () => {
-      getCurrentActor();
+      validateAuthenticationEnvironment(process.env);
     },
     database: async () => {
       await getDatabaseRuntime().db.execute(sql`select 1`);

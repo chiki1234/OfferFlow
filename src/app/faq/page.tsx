@@ -10,7 +10,8 @@ export const dynamic = "force-dynamic";
 
 export default async function FaqPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const params = await searchParams;
-  const view = await getKnowledgeLibrary(getCurrentActor().userId, {
+  const actor = await getCurrentActor();
+  const view = await getKnowledgeLibrary(actor.userId, {
     query: first(params.q),
     kind: first(params.kind),
     category: first(params.category),

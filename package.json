@@ -16,10 +16,16 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:seed": "tsx scripts/seed.ts",
-    "storage:ensure": "tsx scripts/ensure-bucket.ts"
+    "auth:create-user": "tsx scripts/create-user.ts",
+    "storage:ensure": "tsx scripts/ensure-bucket.ts",
+    "services:install": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/install-local-services.ps1",
+    "services:setup": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/setup-local-services.ps1",
+    "services:start": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start-local-services.ps1",
+    "services:stop": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/stop-local-services.ps1"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1121.0",
+    "better-auth": "1.7.2",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "dotenv": "^17.4.2",

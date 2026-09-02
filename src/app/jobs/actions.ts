@@ -44,7 +44,7 @@ export async function quickImportJobTracksAction(
       idempotencyKey: parsed.data.idempotencyKey,
       lifecycle: parsed.data.lifecycle,
       entries,
-    }, getCurrentActor());
+    }, await getCurrentActor());
   } catch (error) {
     logServerError("Failed to quick import jobs", error);
     return { error: "导入失败，每行请使用“公司｜岗位”格式。" };
@@ -79,8 +79,8 @@ export async function createJobTrackAction(
   let staged: StagedJobDescriptionImage[] = [];
   let jobCreated = false;
   try {
-    if (files.length) staged = await stageJobDescriptionImages({ userId: getCurrentActor().userId, files });
-    const actor = getCurrentActor();
+    if (files.length) staged = await stageJobDescriptionImages({ userId: (await getCurrentActor()).userId, files });
+    const actor = await getCurrentActor();
     const created = await getJobWorkflow().execute(
       {
         type: "create_job_track",
@@ -103,7 +103,7 @@ export async function createJobTrackAction(
       }, actor);
     }
   } catch (error) {
-    if (!jobCreated) await discardStagedJobDescriptionImages(getCurrentActor().userId, staged).catch(() => undefined);
+    if (!jobCreated) await discardStagedJobDescriptionImages((await getCurrentActor()).userId, staged).catch(() => undefined);
     logServerError("Failed to create job track", error);
     return { error: jobCreated ? "岗位已保存为待投递，但记录投递失败；请进入详情页补记投递。" : "保存失败，请检查 JD 图片，并确认数据库和对象存储已经启动。" };
   }

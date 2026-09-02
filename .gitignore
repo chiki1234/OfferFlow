@@ -19,6 +19,7 @@ test-results/
 
 # database and object storage volumes
 .data/
+.runtime/
 
 # logs and editor files
 *.log

@@ -10,7 +10,8 @@ export const dynamic = "force-dynamic";
 
 export default async function ExperienceDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const view = await getExperienceDetail(getCurrentActor().userId, id).catch((error: unknown) => {
+  const actor = await getCurrentActor();
+  const view = await getExperienceDetail(actor.userId, id).catch((error: unknown) => {
     if (isDomainNotFoundError(error)) notFound();
     throw error;
   });

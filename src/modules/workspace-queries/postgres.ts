@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, max, sql } from "drizzle-orm";
 import type { AppDatabase } from "@/db/client";
 import { assetLinks, assets, assessments, events, experiences, faqs, interviews, jobDescriptions, jobTracks, resumeExperiences, resumes, tasks } from "@/db/schema";
 import { deriveJobTrackStatus, type JobTrackFacts } from "./derive-job-track-status";
@@ -148,7 +148,7 @@ async function readJobTrackDetail(
       resumeId: jobTracks.resumeId,
       jobUrl: jobTracks.jobUrl,
       descriptionText: jobDescriptions.textContent,
-      lastProgressAt: sql<Date | null>`max(${events.occurredAt})`,
+      lastProgressAt: max(events.occurredAt),
       version: jobTracks.version,
     }).from(jobTracks)
       .leftJoin(jobDescriptions, eq(jobDescriptions.jobTrackId, jobTracks.id))
@@ -296,7 +296,7 @@ async function readJobTracks(
       endReason: jobTracks.endReason,
       resumeId: jobTracks.resumeId,
       descriptionText: jobDescriptions.textContent,
-      lastProgressAt: sql<Date | null>`max(${events.occurredAt})`,
+      lastProgressAt: max(events.occurredAt),
       version: jobTracks.version,
     }).from(jobTracks)
       .leftJoin(jobDescriptions, eq(jobDescriptions.jobTrackId, jobTracks.id))
