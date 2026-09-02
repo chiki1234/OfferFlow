@@ -4,10 +4,9 @@ import { ArrowUpRight, BriefcaseBusiness, FileCheck2 } from "lucide-react";
 import { getWorkspaceQueries } from "@/modules/workspace-queries/composition";
 import { getCurrentActor } from "@/shared/actor/current-actor";
 import { getResumeOptions } from "@/modules/resume-library/queries";
-import { CreateJobForm } from "./create-job-form";
-import { QuickImportForm } from "./quick-import-form";
+import { getExperienceOptions } from "@/modules/interview-knowledge/queries";
 import type { JobTrackListItem } from "@/modules/workspace-queries/interface";
-import { SubmitPlannedJobForm } from "./submit-planned-job-form";
+import { DeletePlannedJobButton, JobsPageActions } from "./jobs-page-actions";
 
 export const dynamic = "force-dynamic";
 
@@ -27,36 +26,31 @@ export default async function JobsPage({
     ? (params.tab as (typeof lifecycleTabs)[number]["key"])
     : "planned";
   const actor = await getCurrentActor();
-  const [view, resumes] = await Promise.all([
+  const [view, resumes, experiences] = await Promise.all([
     getWorkspaceQueries().read({ type: "list_job_tracks", lifecycle: selected }, actor),
     getResumeOptions(actor.userId),
+    getExperienceOptions(actor.userId),
   ]);
-  const currentLocal = toShanghaiLocalInput(new Date());
 
   return (
     <main className="page-stack">
-      <header className="page-heading">
-        <div>
-          <p className="eyebrow">求职推进</p>
-          <h1>每个岗位，现在走到哪里？</h1>
-          <p className="page-description">不预设固定招聘流程，只保存事实和下一步行动。</p>
-        </div>
-      </header>
-
       <div className="jobs-layout">
         <section className="jobs-list-panel">
-          <nav className="tab-list" aria-label="岗位生命周期">
-            {lifecycleTabs.map((tab) => (
-              <Link
-                className={selected === tab.key ? "active" : undefined}
-                href={`/jobs?tab=${tab.key}`}
-                key={tab.key}
-              >
-                {tab.label}
-                <span>{view.counts[tab.key]}</span>
-              </Link>
-            ))}
-          </nav>
+          <div className="jobs-tab-toolbar">
+            <nav className="tab-list" aria-label="岗位生命周期">
+              {lifecycleTabs.map((tab) => (
+                <Link
+                  className={selected === tab.key ? "active" : undefined}
+                  href={`/jobs?tab=${tab.key}`}
+                  key={tab.key}
+                >
+                  {tab.label}
+                  <span>{view.counts[tab.key]}</span>
+                </Link>
+              ))}
+            </nav>
+            <JobsPageActions experiences={experiences} resumes={resumes} tokens={{ create: randomUUID(), quickImport: randomUUID() }} />
+          </div>
 
           <div className="job-card-list">
             {view.items.length === 0 ? (
@@ -72,14 +66,9 @@ export default async function JobsPage({
                 <JobGroup label="待行动" hint="有明确下一步需要完成" items={view.items.filter((job) => job.actionState === "action_required")} />
                 <JobGroup label="等待中" hint="当前步骤已完成，等待公司进展" items={view.items.filter((job) => job.actionState === "waiting")} />
               </>
-            ) : view.items.map((job) => <JobCard job={job} resumes={resumes} currentLocal={currentLocal} key={job.id} />)}
+            ) : view.items.map((job) => <JobCard job={job} key={job.id} />)}
           </div>
         </section>
-
-        <aside className="surface-card form-panel">
-          <CreateJobForm idempotencyKey={randomUUID()} resumes={resumes} />
-          <QuickImportForm idempotencyKey={randomUUID()} />
-        </aside>
       </div>
     </main>
   );
@@ -93,7 +82,7 @@ function JobGroup({ label, hint, items }: { label: string; hint: string; items: 
   </section>;
 }
 
-function JobCard({ job, resumes = [], currentLocal = "" }: { job: JobTrackListItem; resumes?: Array<{ id: string; name: string }>; currentLocal?: string }) {
+function JobCard({ job }: { job: JobTrackListItem }) {
   return <article className="job-card">
     <Link className="job-card-heading" href={`/jobs/${job.id}`}>
       <div><span className="company-name">{job.companyName}</span><h2>{job.roleName}</h2></div>
@@ -108,7 +97,7 @@ function JobCard({ job, resumes = [], currentLocal = "" }: { job: JobTrackListIt
       {job.attentionFlags.includes("waiting_long") && <span className="job-attention">等待较久</span>}
       {job.lifecycle === "ended" && <span>{endReasonLabel(job.endReason)}{job.endedAt ? ` · ${formatDate(job.endedAt)}` : ""}</span>}
     </div>
-    {job.lifecycle === "planned" && <details className="job-card-submit"><summary>标记已投递</summary><SubmitPlannedJobForm jobTrackId={job.id} resumes={resumes} token={randomUUID()} currentLocal={currentLocal} /></details>}
+    {job.lifecycle === "planned" && <div className="job-card-footer"><DeletePlannedJobButton jobLabel={`${job.companyName} · ${job.roleName}`} jobTrackId={job.id} token={randomUUID()} /></div>}
   </article>;
 }
 
@@ -118,8 +107,4 @@ function endReasonLabel(reason: string | null) {
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat("zh-CN", { timeZone: "Asia/Shanghai", year: "numeric", month: "numeric", day: "numeric" }).format(new Date(value));
-}
-
-function toShanghaiLocalInput(value: Date) {
-  return new Date(value.getTime() + 8 * 60 * 60 * 1000).toISOString().slice(0, 16);
 }

@@ -8,7 +8,7 @@ export async function getQuickActionOptions(userId: string) {
     db.select({ id: jobTracks.id, companyName: jobTracks.companyName, roleName: jobTracks.roleName })
       .from(jobTracks).where(and(eq(jobTracks.userId, userId), eq(jobTracks.lifecycle, "active")))
       .orderBy(asc(jobTracks.companyName), asc(jobTracks.roleName)),
-    db.select({ id: interviews.id, jobTrackId: interviews.jobTrackId, roundLabel: interviews.roundLabel, interviewType: interviews.interviewType })
+    db.select({ id: interviews.id, jobTrackId: interviews.jobTrackId, roundLabel: interviews.roundLabel, interviewType: interviews.interviewType, companyName: jobTracks.companyName, roleName: jobTracks.roleName })
       .from(interviews)
       .innerJoin(jobTracks, eq(jobTracks.id, interviews.jobTrackId))
       .where(and(eq(jobTracks.userId, userId), eq(jobTracks.lifecycle, "active"), eq(interviews.status, "scheduled")))

@@ -14,3 +14,13 @@ export function validateResumeUpload(file: { name: string; type: string; size: n
   }
   return { extension };
 }
+
+export function validateResumeExperienceSelection(input: { experienceIds: string[]; newExperienceNames: string[]; required?: boolean }) {
+  const experienceIds = [...new Set(input.experienceIds)];
+  const newExperienceNames = [...new Set(input.newExperienceNames.map((name) => name.trim()).filter(Boolean))];
+  if (newExperienceNames.some((name) => name.length > 255)) throw new Error("VALIDATION_ERROR: experience name is too long");
+  if (input.required && experienceIds.length + newExperienceNames.length === 0) {
+    throw new Error("VALIDATION_ERROR: resume requires at least one experience");
+  }
+  return { experienceIds, newExperienceNames };
+}

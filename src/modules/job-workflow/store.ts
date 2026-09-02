@@ -71,6 +71,10 @@ export interface JobWorkflowTransaction {
     assessmentId: string;
     cancelledAt: string;
   }): Promise<{ assessment: AssessmentView; task: TaskView | null }>;
+  deleteAssessmentWithRelatedData(input: {
+    userId: string;
+    assessmentId: string;
+  }): Promise<void>;
   insertInterview(interview: InterviewView): Promise<InterviewView>;
   findInterview(userId: string, interviewId: string): Promise<InterviewView | null>;
   updateInterviewSchedule(input: {
@@ -84,6 +88,10 @@ export interface JobWorkflowTransaction {
     interviewId: string;
     cancelledAt: string;
   }): Promise<InterviewView>;
+  deleteInterviewWithRelatedData(input: {
+    userId: string;
+    interviewId: string;
+  }): Promise<void>;
   markInterviewOccurred(input: {
     userId: string;
     interviewId: string;

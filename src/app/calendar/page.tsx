@@ -22,13 +22,6 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
   );
   return (
     <main className="page-stack">
-      <header className="page-heading">
-        <div>
-          <p className="eyebrow">周视图</p>
-          <h1>所有硬时间，一个地方看清。</h1>
-          <p className="page-description">面试、固定笔试和 Deadline 会直接从业务对象汇总到这里。</p>
-        </div>
-      </header>
       <nav className="calendar-navigation" aria-label="切换周"><Link className="secondary-button" href={`/calendar?week=${week.previousKey}`}><ChevronLeft size={16} />上一周</Link><div><strong>{formatWeekRange(week.startAt, week.endAt)}</strong>{week.key !== currentWeekKey && <Link href="/calendar">回到本周</Link>}</div><Link className="secondary-button" href={`/calendar?week=${week.nextKey}`}>下一周<ChevronRight size={16} /></Link></nav>
       {view.items.length === 0 ? (
         <section className="surface-card empty-state jobs-empty" style={{ marginTop: 40 }}>

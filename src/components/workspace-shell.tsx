@@ -1,16 +1,26 @@
 "use client";
 
 import Link from "next/link";
-import { BriefcaseBusiness, CalendarDays, CircleHelp, Download, LayoutDashboard, Plus } from "lucide-react";
+import Image from "next/image";
+import { BriefcaseBusiness, CalendarDays, CircleHelp, Download, LayoutDashboard } from "lucide-react";
 import { usePathname } from "next/navigation";
+import offerFlowIcon from "@/app/icon.png";
 import { LogoutButton } from "@/components/logout-button";
+import { GlobalQuickActions } from "@/components/global-quick-actions";
 
 const navigation = [
   { href: "/", label: "工作台", icon: LayoutDashboard },
   { href: "/jobs", label: "求职", icon: BriefcaseBusiness },
   { href: "/calendar", label: "日历", icon: CalendarDays },
-  { href: "/faq", label: "FAQ", icon: CircleHelp },
+  { href: "/faq", label: "知识库", icon: CircleHelp },
 ];
+
+function isNavigationActive(pathname: string, href: string) {
+  if (href === "/") return pathname === "/";
+  if (href === "/jobs") return pathname.startsWith("/jobs") || pathname.startsWith("/interviews");
+  if (href === "/faq") return pathname.startsWith("/faq") || pathname.startsWith("/experiences");
+  return pathname.startsWith(href);
+}
 
 export function WorkspaceShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -20,15 +30,15 @@ export function WorkspaceShell({ children }: { children: React.ReactNode }) {
     <div className="workspace-shell">
       <aside className="sidebar">
         <Link className="brand" href="/">
-          <span className="brand-mark">轨</span>
+          <span className="brand-mark"><Image alt="" className="brand-mark-image" fill priority sizes="38px" src={offerFlowIcon} /></span>
           <span>
-            <strong>求职轨迹</strong>
-            <small>Job Flow</small>
+            <strong>OfferFlow</strong>
+            <small>Offer Flow</small>
           </span>
         </Link>
         <nav className="sidebar-nav" aria-label="一级导航">
           {navigation.map(({ href, label, icon: Icon }) => (
-            <Link href={href} key={href}>
+            <Link aria-current={isNavigationActive(pathname, href) ? "page" : undefined} className={isNavigationActive(pathname, href) ? "active" : undefined} href={href} key={href}>
               <Icon size={19} />
               <span>{label}</span>
             </Link>
@@ -42,12 +52,10 @@ export function WorkspaceShell({ children }: { children: React.ReactNode }) {
         <LogoutButton />
       </aside>
       <div className="workspace-content">{children}</div>
-      <Link className="floating-add" href="/quick" aria-label="打开全局快捷操作">
-        <Plus size={24} />
-      </Link>
+      <GlobalQuickActions />
       <nav className="mobile-nav" aria-label="移动端一级导航">
         {navigation.map(({ href, label, icon: Icon }) => (
-          <Link href={href} key={href}>
+          <Link aria-current={isNavigationActive(pathname, href) ? "page" : undefined} className={isNavigationActive(pathname, href) ? "active" : undefined} href={href} key={href}>
             <Icon size={19} />
             <span>{label}</span>
           </Link>

@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
+import Image from "next/image";
+import offerFlowIcon from "@/app/icon.png";
 import { LoginForm } from "./login-form";
 
 export const metadata: Metadata = {
-  title: "登录｜求职轨迹",
+  title: "登录｜OfferFlow",
 };
 
 export default async function LoginPage({
@@ -16,8 +18,8 @@ export default async function LoginPage({
   return (
     <main className="login-page">
       <section className="login-intro">
-        <div className="login-brand"><span className="brand-mark">轨</span><strong>求职轨迹</strong></div>
-        <p className="eyebrow">Job Flow</p>
+        <div className="login-brand"><span className="brand-mark"><Image alt="" className="brand-mark-image" fill priority sizes="38px" src={offerFlowIcon} /></span><strong>OfferFlow</strong></div>
+        <p className="eyebrow">Offer Flow</p>
         <h1>把每一次投递，<br />变成清晰的下一步。</h1>
         <p>岗位、日历、面试复盘与经验沉淀，都在一个私密工作台中衔接起来。</p>
       </section>

@@ -398,6 +398,24 @@ export function createPostgresJobWorkflowStore(db: AppDatabase): JobWorkflowStor
             if (!cancelled) throw new Error("NOT_FOUND: assessment was not found");
             return cancelled;
           },
+          async deleteAssessmentWithRelatedData(input) {
+            const relatedTasks = await databaseTransaction.select({ id: tasks.id }).from(tasks).where(and(
+              eq(tasks.userId, input.userId),
+              eq(tasks.assessmentId, input.assessmentId),
+            ));
+            await databaseTransaction.delete(events).where(and(
+              eq(events.userId, input.userId),
+              inArray(events.subjectId, [input.assessmentId, ...relatedTasks.map((task) => task.id)]),
+            ));
+            await databaseTransaction.delete(actionReceipts).where(and(
+              eq(actionReceipts.userId, input.userId),
+              sql`${actionReceipts.result}::text LIKE ${`%${input.assessmentId}%`}`,
+            ));
+            const deleted = await databaseTransaction.delete(assessments)
+              .where(eq(assessments.id, input.assessmentId))
+              .returning({ id: assessments.id });
+            if (!deleted.length) throw new Error("NOT_FOUND: assessment was not found");
+          },
           async insertInterview(interview) {
             await databaseTransaction.insert(interviews).values({
               id: interview.id,
@@ -461,6 +479,24 @@ export function createPostgresJobWorkflowStore(db: AppDatabase): JobWorkflowStor
               throw new Error("NOT_FOUND: interview was not found");
             }
             return cancelled;
+          },
+          async deleteInterviewWithRelatedData(input) {
+            const relatedTasks = await databaseTransaction.select({ id: tasks.id }).from(tasks).where(and(
+              eq(tasks.userId, input.userId),
+              eq(tasks.interviewId, input.interviewId),
+            ));
+            await databaseTransaction.delete(events).where(and(
+              eq(events.userId, input.userId),
+              inArray(events.subjectId, [input.interviewId, ...relatedTasks.map((task) => task.id)]),
+            ));
+            await databaseTransaction.delete(actionReceipts).where(and(
+              eq(actionReceipts.userId, input.userId),
+              sql`${actionReceipts.result}::text LIKE ${`%${input.interviewId}%`}`,
+            ));
+            const deleted = await databaseTransaction.delete(interviews)
+              .where(eq(interviews.id, input.interviewId))
+              .returning({ id: interviews.id });
+            if (!deleted.length) throw new Error("NOT_FOUND: interview was not found");
           },
           async markInterviewOccurred(input) {
             const occurredAt = new Date(input.occurredAt);

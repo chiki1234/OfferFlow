@@ -1,11 +1,10 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
 import { z } from "zod";
 import { discardStagedJobDescriptionImages, listJobDescriptionAssetsForCleanup, uploadJobDescriptionImages } from "@/modules/job-description-assets/service";
 import { getJobWorkflow } from "@/modules/job-workflow/composition";
-import { uploadResumeVersion } from "@/modules/resume-library/service";
+import { resolveResumeSelection } from "@/modules/resume-library/form-selection";
 import { discardTranscriptAsset, getInterviewTranscriptAssetForCleanup, stageTranscriptAsset, type StagedTranscriptAsset } from "@/modules/transcript-assets/service";
 import { getCurrentActor } from "@/shared/actor/current-actor";
 import { logServerError } from "@/shared/logging/server-error";
@@ -13,7 +12,7 @@ import { logServerError } from "@/shared/logging/server-error";
 export type JobDetailActionState = { error: string | null; success: string | null };
 
 const baseSchema = z.object({
-  intent: z.enum(["submit", "update_context", "assessment", "interview", "reschedule_interview", "save_interview_transcript", "task", "update_task", "complete_task", "cancel_task", "complete_assessment", "cancel_assessment", "cancel_interview", "confirm_interview_occurred", "complete_interview_review", "record_rejection", "end_job_track", "record_generic_progress", "delete_planned_job_track", "upload_resume", "upload_jd_images"]),
+  intent: z.enum(["submit", "update_context", "assessment", "interview", "reschedule_interview", "save_interview_transcript", "task", "update_task", "complete_task", "cancel_task", "complete_assessment", "cancel_assessment", "delete_assessment", "cancel_interview", "delete_interview", "confirm_interview_occurred", "complete_interview_review", "record_rejection", "end_job_track", "record_generic_progress", "delete_planned_job_track", "upload_jd_images"]),
   idempotencyKey: z.string().min(8),
   jobTrackId: z.uuid(),
 });
@@ -55,17 +54,6 @@ export async function jobDetailAction(
         revalidateWorkspace(base.data.jobTrackId);
         return { error: null, success: "岗位上下文已更新。" };
       }
-      case "upload_resume": {
-        const file = formData.get("resumeFile");
-        if (!(file instanceof File)) return { error: "请选择简历文件。", success: null };
-        await uploadResumeVersion({
-          userId: actor.userId,
-          file,
-          name: z.string().trim().max(255).optional().parse(formData.get("resumeName") || undefined),
-        });
-        revalidateWorkspace(base.data.jobTrackId);
-        return { error: null, success: "简历版本已上传。" };
-      }
       case "upload_jd_images": {
         const files = formData.getAll("jdImages").filter((item): item is File => item instanceof File && item.size > 0);
         await uploadJobDescriptionImages({ userId: actor.userId, jobTrackId: base.data.jobTrackId, files });
@@ -73,14 +61,15 @@ export async function jobDetailAction(
         return { error: null, success: `已上传 ${files.length} 张 JD 图片。` };
       }
       case "submit": {
-        const data = z.object({ resumeId: z.uuid(), submittedAt: z.string().min(1) }).parse({
-          resumeId: formData.get("resumeId"), submittedAt: formData.get("submittedAt"),
+        const data = z.object({ submittedAt: z.string().min(1) }).parse({
+          submittedAt: formData.get("submittedAt"),
         });
+        const resumeId = await resolveResumeSelection({ userId: actor.userId, formData });
         await workflow.execute({
           type: "submit_application",
           idempotencyKey: base.data.idempotencyKey,
           jobTrackId: base.data.jobTrackId,
-          resumeId: data.resumeId,
+          resumeId,
           submittedAt: toIso(data.submittedAt),
         }, actor);
         revalidateWorkspace(base.data.jobTrackId);
@@ -271,6 +260,16 @@ export async function jobDetailAction(
         revalidateWorkspace(base.data.jobTrackId);
         return { error: null, success: "测评已取消。" };
       }
+      case "delete_assessment": {
+        const assessmentId = z.uuid().parse(formData.get("assessmentId"));
+        await workflow.execute({
+          type: "delete_assessment",
+          idempotencyKey: base.data.idempotencyKey,
+          assessmentId,
+        }, actor);
+        revalidateWorkspace(base.data.jobTrackId);
+        return { error: null, success: "测评记录已彻底删除。" };
+      }
       case "cancel_interview": {
         const interviewId = z.uuid().parse(formData.get("interviewId"));
         await workflow.execute({
@@ -281,6 +280,19 @@ export async function jobDetailAction(
         }, actor);
         revalidateWorkspace(base.data.jobTrackId);
         return { error: null, success: "面试已取消。" };
+      }
+      case "delete_interview": {
+        const interviewId = z.uuid().parse(formData.get("interviewId"));
+        const transcriptAsset = await getInterviewTranscriptAssetForCleanup({ userId: actor.userId, interviewId });
+        await workflow.execute({
+          type: "delete_interview",
+          idempotencyKey: base.data.idempotencyKey,
+          interviewId,
+        }, actor);
+        await discardTranscriptAsset(actor.userId, transcriptAsset).catch((cleanupError) => logServerError("Failed to clean up deleted interview transcript asset", cleanupError));
+        revalidateWorkspace(base.data.jobTrackId);
+        revalidatePath(`/interviews/${interviewId}`);
+        return { error: null, success: "面试记录已彻底删除。" };
       }
       case "confirm_interview_occurred": {
         const interviewId = z.uuid().parse(formData.get("interviewId"));
@@ -348,18 +360,13 @@ export async function jobDetailAction(
         await discardStagedJobDescriptionImages(actor.userId, descriptionAssets).catch((cleanupError) => logServerError("Failed to clean up deleted JD assets", cleanupError));
         revalidatePath("/");
         revalidatePath("/jobs");
-        redirect("/jobs?tab=planned");
+        return { error: null, success: "待投递岗位已删除。" };
       }
     }
   } catch (error) {
-    if (isRedirectError(error)) throw error;
     logServerError("Job detail action failed", error);
     return { error: error instanceof z.ZodError ? "请检查输入内容。" : "操作失败，请重试。", success: null };
   }
-}
-
-function isRedirectError(error: unknown): boolean {
-  return Boolean(error && typeof error === "object" && "digest" in error && String(error.digest).startsWith("NEXT_REDIRECT"));
 }
 
 function toIso(value: string): string {

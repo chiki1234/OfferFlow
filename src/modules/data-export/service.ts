@@ -6,6 +6,7 @@ import {
   events,
   experienceGroups,
   experiences,
+  faqCategories,
   faqs,
   interviews,
   jobDescriptions,
@@ -19,7 +20,7 @@ import { getDatabaseRuntime } from "@/db/runtime";
 
 export async function exportUserData(userId: string) {
   const db = getDatabaseRuntime().db;
-  const [profileRows, jobTrackRows, descriptionRows, resumeRows, experienceGroupRows, experienceRows, resumeExperienceRows, assessmentRows, interviewRows, taskRows, eventRows, faqRows, assetRows, assetLinkRows] = await Promise.all([
+  const [profileRows, jobTrackRows, descriptionRows, resumeRows, experienceGroupRows, experienceRows, resumeExperienceRows, assessmentRows, interviewRows, taskRows, eventRows, faqRows, faqCategoryRows, assetRows, assetLinkRows] = await Promise.all([
     db.select({ id: users.id, email: users.email, timezone: users.timezone, createdAt: users.createdAt }).from(users).where(eq(users.id, userId)),
     db.select().from(jobTracks).where(eq(jobTracks.userId, userId)),
     db.select({ id: jobDescriptions.id, jobTrackId: jobDescriptions.jobTrackId, textContent: jobDescriptions.textContent, createdAt: jobDescriptions.createdAt, updatedAt: jobDescriptions.updatedAt })
@@ -36,6 +37,7 @@ export async function exportUserData(userId: string) {
     db.select().from(tasks).where(eq(tasks.userId, userId)),
     db.select().from(events).where(eq(events.userId, userId)),
     db.select().from(faqs).where(eq(faqs.userId, userId)),
+    db.select().from(faqCategories).where(eq(faqCategories.userId, userId)),
     db.select({ id: assets.id, kind: assets.kind, originalName: assets.originalName, mimeType: assets.mimeType, sizeBytes: assets.sizeBytes, sha256: assets.sha256, createdAt: assets.createdAt })
       .from(assets).where(eq(assets.userId, userId)),
     db.select({ id: assetLinks.id, assetId: assetLinks.assetId, ownerType: assetLinks.ownerType, ownerId: assetLinks.ownerId, sortOrder: assetLinks.sortOrder, createdAt: assetLinks.createdAt })
@@ -61,6 +63,7 @@ export async function exportUserData(userId: string) {
       tasks: taskRows,
       events: eventRows,
       faqs: faqRows,
+      faqCategories: faqCategoryRows,
       assets: assetRows.map((asset) => ({ ...asset, downloadPath: `/api/assets/${asset.id}` })),
       assetLinks: assetLinkRows,
     },

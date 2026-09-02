@@ -2,11 +2,25 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { getExperienceOptions, getFaqCategoryConfig } from "@/modules/interview-knowledge/queries";
 import { getJobWorkflow } from "@/modules/job-workflow/composition";
+import { getResumeOptions } from "@/modules/resume-library/queries";
+import { getQuickActionOptions } from "@/modules/workspace-queries/quick-options";
 import { getCurrentActor } from "@/shared/actor/current-actor";
 import { logServerError } from "@/shared/logging/server-error";
 
 export type QuickActionState = { error: string | null; success: string | null };
+
+export async function loadGlobalQuickOptionsAction() {
+  const actor = await getCurrentActor();
+  const [quick, resumes, experiences, faqCategories] = await Promise.all([
+    getQuickActionOptions(actor.userId),
+    getResumeOptions(actor.userId),
+    getExperienceOptions(actor.userId),
+    getFaqCategoryConfig(actor.userId),
+  ]);
+  return { ...quick, resumes, experiences, faqCategories };
+}
 
 export async function createQuickTaskAction(_state: QuickActionState, formData: FormData): Promise<QuickActionState> {
   try {
@@ -55,7 +69,7 @@ export async function updateQuickTaskAction(_state: QuickActionState, formData: 
 
 export async function recordQuickProgressAction(_state: QuickActionState, formData: FormData): Promise<QuickActionState> {
   try {
-    const base = z.object({ idempotencyKey: z.string().min(8), jobTrackId: z.uuid(), progressType: z.enum(["assessment", "interview", "rejection", "generic"]) }).parse({ idempotencyKey: formData.get("idempotencyKey"), jobTrackId: formData.get("jobTrackId"), progressType: formData.get("progressType") });
+    const base = z.object({ idempotencyKey: z.string().min(8), jobTrackId: z.uuid(), progressType: z.enum(["assessment", "interview", "rejection", "generic", "end"]) }).parse({ idempotencyKey: formData.get("idempotencyKey"), jobTrackId: formData.get("jobTrackId"), progressType: formData.get("progressType") });
     const workflow = getJobWorkflow();
     const actor = await getCurrentActor();
     if (base.progressType === "assessment") {
@@ -67,8 +81,10 @@ export async function recordQuickProgressAction(_state: QuickActionState, formDa
       await workflow.execute({ type: "schedule_interview", idempotencyKey: base.idempotencyKey, jobTrackId: base.jobTrackId, roundLabel: data.roundLabel, interviewType: data.interviewType, startAt: toIso(data.startAt), endAt: toIso(data.endAt), receivedAt: toIso(data.receivedAt), meetingUrl: data.meetingUrl || undefined, notes: data.notes }, actor);
     } else if (base.progressType === "rejection") {
       await workflow.execute({ type: "record_rejection", idempotencyKey: base.idempotencyKey, jobTrackId: base.jobTrackId, occurredAt: new Date().toISOString(), notes: z.string().trim().max(2000).optional().parse(formData.get("notes") || undefined) }, actor);
-    } else {
+    } else if (base.progressType === "generic") {
       await workflow.execute({ type: "record_generic_progress", idempotencyKey: base.idempotencyKey, jobTrackId: base.jobTrackId, summary: z.string().trim().min(1).max(2000).parse(formData.get("summary")), occurredAt: new Date().toISOString() }, actor);
+    } else {
+      await workflow.execute({ type: "end_job_track", idempotencyKey: base.idempotencyKey, jobTrackId: base.jobTrackId, reason: z.string().trim().min(1).max(64).parse(formData.get("reason")), occurredAt: new Date().toISOString() }, actor);
     }
     revalidateAll(base.jobTrackId);
     return { error: null, success: "进展已记录。" };

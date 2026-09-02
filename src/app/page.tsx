@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { AlertTriangle, ArrowRight, CalendarDays, CircleAlert, ClipboardCheck, Clock3 } from "lucide-react";
+import { AlertTriangle, CalendarDays, CircleAlert, ClipboardCheck, Clock3 } from "lucide-react";
 import { getCurrentActor } from "@/shared/actor/current-actor";
 import { getWorkspaceQueries } from "@/modules/workspace-queries/composition";
 
@@ -15,21 +15,10 @@ export default async function HomePage() {
 
   return (
     <main className="page-stack">
-      <header className="page-heading">
-        <div>
-          <p className="eyebrow">行动首页</p>
-          <h1>早上好，先处理最重要的事。</h1>
-          <p className="page-description">工作台会把任务、硬时间和需要关注的岗位放在一起。</p>
-        </div>
-        <Link className="primary-button" href="/jobs?tab=planned">
-          新增待投递 <ArrowRight size={17} />
-        </Link>
-      </header>
-
       <section className="metric-grid" aria-label="求职进度概览">
-        <MetricCard label="待投递" value={view.counts.planned} hint="明确准备投递" tone="mint" />
-        <MetricCard label="进行中" value={view.counts.active} hint="正在推进" tone="amber" />
-        <MetricCard label="已结束" value={view.counts.ended} hint="保留完整上下文" tone="slate" />
+        <MetricCard href="/jobs?tab=planned" label="待投递" value={view.counts.planned} tone="mint" />
+        <MetricCard href="/jobs?tab=active" label="进行中" value={view.counts.active} tone="amber" />
+        <MetricCard href="/jobs?tab=ended" label="已结束" value={view.counts.ended} tone="slate" />
       </section>
 
       <section className="dashboard-grid">
@@ -37,14 +26,13 @@ export default async function HomePage() {
           <div className="section-title-row">
             <div>
               <p className="eyebrow">今天要做</p>
-              <h2>行动队列</h2>
             </div>
             <Clock3 size={20} />
           </div>
           {view.todayItems.length === 0 ? (
             <div className="empty-state compact">
               <span className="empty-icon"><CircleAlert size={20} /></span>
-              <div><strong>暂时没有到期事项</strong><p>记录测评或面试后，这里会自动出现下一步。</p></div>
+              <div><strong>暂时没有到期事项</strong></div>
             </div>
           ) : (
             <div className="agenda-list">
@@ -63,14 +51,13 @@ export default async function HomePage() {
           <div className="section-title-row">
             <div>
               <p className="eyebrow">未来 7 天</p>
-              <h2>近期日程</h2>
             </div>
             <CalendarDays size={20} />
           </div>
           {view.upcomingItems.length === 0 ? (
             <div className="empty-state compact">
               <span className="empty-icon"><CalendarDays size={20} /></span>
-              <div><strong>本周还没有硬时间</strong><p>面试、固定笔试和 Deadline 会汇总到这里。</p></div>
+              <div><strong>本周还没有日程</strong></div>
             </div>
           ) : (
             <div className="agenda-list">
@@ -90,14 +77,13 @@ export default async function HomePage() {
         <div className="section-title-row">
           <div>
             <p className="eyebrow">需要关注</p>
-            <h2>别让重要进展沉下去</h2>
           </div>
           <AlertTriangle size={20} />
         </div>
         {view.attentionJobs.length === 0 && reviewItems.length === 0 ? (
           <div className="empty-state compact">
             <span className="empty-icon"><ClipboardCheck size={20} /></span>
-            <div><strong>目前没有需要额外关注的岗位</strong><p>等待较久、逾期和待复盘事项会自动汇总到这里。</p></div>
+            <div><strong>目前没有需要额外关注的岗位</strong></div>
           </div>
         ) : (
           <div className="attention-list">
@@ -137,21 +123,20 @@ function formatDateTime(value: string) {
 }
 
 function MetricCard({
+  href,
   label,
   value,
-  hint,
   tone,
 }: {
+  href: string;
   label: string;
   value: number;
-  hint: string;
   tone: "mint" | "amber" | "slate";
 }) {
   return (
-    <article className={`metric-card ${tone}`}>
+    <Link aria-label={`${label}，共 ${value} 个岗位`} className={`metric-card ${tone}`} href={href}>
       <span>{label}</span>
       <strong>{value}</strong>
-      <small>{hint}</small>
-    </article>
+    </Link>
   );
 }

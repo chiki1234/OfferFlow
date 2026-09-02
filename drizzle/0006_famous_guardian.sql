@@ -1,0 +1,1 @@
+ALTER TABLE "faqs" ALTER COLUMN "source_interview_id" DROP NOT NULL;

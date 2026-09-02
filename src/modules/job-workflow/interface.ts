@@ -63,6 +63,12 @@ export type CancelAssessmentCommand = {
   cancelledAt: string;
 };
 
+export type DeleteAssessmentCommand = {
+  type: "delete_assessment";
+  idempotencyKey: string;
+  assessmentId: string;
+};
+
 export type ScheduleInterviewCommand = {
   type: "schedule_interview";
   idempotencyKey: string;
@@ -92,6 +98,12 @@ export type CancelInterviewCommand = {
   interviewId: string;
   reason?: string;
   cancelledAt: string;
+};
+
+export type DeleteInterviewCommand = {
+  type: "delete_interview";
+  idempotencyKey: string;
+  interviewId: string;
 };
 
 export type ConfirmInterviewOccurredCommand = {
@@ -194,9 +206,11 @@ export type JobCommand =
   | RecordAssessmentInviteCommand
   | CompleteAssessmentCommand
   | CancelAssessmentCommand
+  | DeleteAssessmentCommand
   | ScheduleInterviewCommand
   | RescheduleInterviewCommand
   | CancelInterviewCommand
+  | DeleteInterviewCommand
   | ConfirmInterviewOccurredCommand
   | CompleteInterviewReviewCommand
   | SaveInterviewTranscriptCommand
@@ -319,6 +333,12 @@ export type CancelAssessmentResult = {
   event: JobEventView;
 };
 
+export type DeleteAssessmentResult = {
+  outcome: "assessment_deleted";
+  assessmentId: string;
+  jobTrackId: string;
+};
+
 export type ScheduleInterviewResult = {
   outcome: "interview_scheduled";
   interview: InterviewView;
@@ -335,6 +355,12 @@ export type CancelInterviewResult = {
   outcome: "interview_cancelled";
   interview: InterviewView;
   event: JobEventView;
+};
+
+export type DeleteInterviewResult = {
+  outcome: "interview_deleted";
+  interviewId: string;
+  jobTrackId: string;
 };
 
 export type ConfirmInterviewOccurredResult = {
@@ -372,9 +398,11 @@ export type JobCommandResult =
   | RecordAssessmentInviteResult
   | CompleteAssessmentResult
   | CancelAssessmentResult
+  | DeleteAssessmentResult
   | ScheduleInterviewResult
   | RescheduleInterviewResult
   | CancelInterviewResult
+  | DeleteInterviewResult
   | ConfirmInterviewOccurredResult
   | CompleteInterviewReviewResult
   | SaveInterviewTranscriptResult
@@ -400,12 +428,16 @@ export type JobCommandResultFor<TCommand extends JobCommand> =
           ? CompleteAssessmentResult
           : TCommand extends CancelAssessmentCommand
             ? CancelAssessmentResult
+          : TCommand extends DeleteAssessmentCommand
+            ? DeleteAssessmentResult
           : TCommand extends ScheduleInterviewCommand
             ? ScheduleInterviewResult
             : TCommand extends RescheduleInterviewCommand
               ? RescheduleInterviewResult
               : TCommand extends CancelInterviewCommand
                 ? CancelInterviewResult
+                : TCommand extends DeleteInterviewCommand
+                  ? DeleteInterviewResult
                 : TCommand extends ConfirmInterviewOccurredCommand
                   ? ConfirmInterviewOccurredResult
                   : TCommand extends CompleteInterviewReviewCommand

@@ -16,46 +16,53 @@ export type ParsedFaqBlock =
     };
 
 export function parseFaqBlocks(input: string): ParsedFaqBlock[] {
-  return input
-    .split(/^\s*---\s*$/m)
-    .map((raw) => raw.trim())
-    .filter(Boolean)
-    .map((raw, index) => parseBlock(raw, index));
+  const lines = input.split(/\r?\n/);
+  const questionLines = lines.flatMap((line, lineIndex) =>
+    matchMarker(line, "Q") ? [lineIndex] : [],
+  );
+
+  return questionLines.map((startLine, index) => {
+    const endLine = questionLines[index + 1] ?? lines.length;
+    return parseBlock(lines.slice(startLine, endLine), index);
+  });
 }
 
-function parseBlock(raw: string, index: number): ParsedFaqBlock {
-  const lines = raw.split(/\r?\n/);
-  const questionLine = lines.findIndex((line) => /^\s*Q\s*:/i.test(line));
-  const answerLine = lines.findIndex(
-    (line, lineIndex) => lineIndex > questionLine && /^\s*A\s*:/i.test(line),
+function parseBlock(lines: string[], index: number): ParsedFaqBlock {
+  const questionMatch = matchMarker(lines[0] ?? "", "Q");
+  const answerLine = lines.findIndex((line, lineIndex) =>
+    lineIndex > 0 && matchMarker(line, "A"),
   );
-  if (questionLine < 0 || answerLine < 0) {
+  const contentEnd = lines.findIndex((line, lineIndex) =>
+    lineIndex > Math.max(answerLine, 0) && isMarkdownBoundary(line),
+  );
+  const blockLines = lines.slice(0, contentEnd < 0 ? lines.length : contentEnd);
+  const raw = blockLines.join("\n").trim();
+  const question = questionMatch?.[1].trim() ?? "";
+
+  if (!question) {
     return {
       index,
       status: "invalid",
-      question: questionLine >= 0 ? stripMarker(lines[questionLine], "Q") : null,
+      question: null,
       answer: null,
       raw,
-      error: "FAQ Block 需要同时包含 Q: 和 A:",
+      error: "FAQ 的问题不能为空",
     };
   }
-  const question = stripMarker(lines[questionLine], "Q");
-  const answer = [stripMarker(lines[answerLine], "A"), ...lines.slice(answerLine + 1)]
-    .join("\n")
-    .trim();
-  if (!question || !answer) {
-    return {
-      index,
-      status: "invalid",
-      question: question || null,
-      answer: answer || null,
-      raw,
-      error: "FAQ 的问题和答案不能为空",
-    };
-  }
+
+  const answerMatch = answerLine < 0 ? null : matchMarker(lines[answerLine], "A");
+  const answer = answerLine < 0
+    ? ""
+    : [answerMatch?.[1] ?? "", ...blockLines.slice(answerLine + 1)].join("\n").trim();
+
   return { index, status: "valid", question, answer, raw };
 }
 
-function stripMarker(line: string, marker: "Q" | "A") {
-  return line.replace(new RegExp(`^\\s*${marker}\\s*:\\s*`, "i"), "").trim();
+function matchMarker(line: string, marker: "Q" | "A") {
+  return line.match(new RegExp(`^\\s*(?:#{1,6}\\s*)?${marker}\\s*[:：]\\s*(.*)$`, "i"));
+}
+
+function isMarkdownBoundary(line: string) {
+  return /^\s*(?:-{3,}|\*{3,}|_{3,})\s*$/.test(line)
+    || /^\s*#{1,6}(?:\s+|$)/.test(line);
 }

@@ -43,6 +43,34 @@
       "when": 1788319741905,
       "tag": "0005_sharp_harpoon",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1788334888646,
+      "tag": "0006_famous_guardian",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1788339232095,
+      "tag": "0007_lethal_gauntlet",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1788353153933,
+      "tag": "0008_faq_categories",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1788360555374,
+      "tag": "0009_smiling_gladiator",
+      "breakpoints": true
     }
   ]
 }

@@ -1,19 +1,30 @@
-import { and, asc, desc, eq, ilike, or, sql } from "drizzle-orm";
-import { assets, experiences, faqs, interviews, jobDescriptions, jobTracks, resumeExperiences, resumes, tasks } from "@/db/schema";
+import { and, asc, desc, eq, ilike, isNotNull, isNull, or, sql } from "drizzle-orm";
+import { assets, experiences, faqCategories, faqs, interviews, jobDescriptions, jobTracks, resumeExperiences, resumes, tasks } from "@/db/schema";
 import { getDatabaseRuntime } from "@/db/runtime";
+import { defaultFaqCategories, type FaqCategoryConfig } from "./faq-batch";
 import { normalizeFaqLibraryFilters } from "./faq-filters";
 
-export async function getKnowledgeLibrary(userId: string, input: { query?: string; kind?: string; category?: string } = {}) {
+export async function getKnowledgeLibrary(userId: string, input: { query?: string; binding?: string; category?: string; settings?: string } = {}) {
   const db = getDatabaseRuntime().db;
-  const filters = normalizeFaqLibraryFilters(input);
+  const categoryConfig = await getFaqCategoryConfig(userId);
+  const filters = normalizeFaqLibraryFilters(input, categoryConfig);
   const faqConditions = [eq(faqs.userId, userId)];
   if (filters.query) {
     const escapedQuery = filters.query.replace(/[\\%_]/g, "\\$&");
     const searchCondition = or(ilike(faqs.question, `%${escapedQuery}%`), ilike(faqs.answer, `%${escapedQuery}%`));
     if (searchCondition) faqConditions.push(searchCondition);
   }
-  if (filters.kind) faqConditions.push(eq(faqs.kind, filters.kind));
+  if (filters.binding === "bound") faqConditions.push(isNotNull(faqs.experienceId));
+  if (filters.binding === "unbound") faqConditions.push(isNull(faqs.experienceId));
   if (filters.category) faqConditions.push(eq(faqs.category, filters.category));
+  if (filters.settings === "complete") {
+    const completeCondition = or(isNotNull(faqs.experienceId), isNotNull(faqs.category));
+    if (completeCondition) faqConditions.push(completeCondition);
+  }
+  if (filters.settings === "incomplete") {
+    const incompleteCondition = and(isNull(faqs.experienceId), isNull(faqs.category));
+    if (incompleteCondition) faqConditions.push(incompleteCondition);
+  }
 
   const [experienceRows, faqRows, interviewRows, resumeRows, linkRows, faqCountRows] = await Promise.all([
     db.select({
@@ -41,9 +52,9 @@ export async function getKnowledgeLibrary(userId: string, input: { query?: strin
       createdAt: faqs.createdAt,
     }).from(faqs)
       .leftJoin(experiences, and(eq(experiences.id, faqs.experienceId), eq(experiences.userId, userId)))
-      .innerJoin(interviews, eq(interviews.id, faqs.sourceInterviewId))
-      .innerJoin(jobTracks, eq(jobTracks.id, interviews.jobTrackId))
-      .where(and(...faqConditions, eq(jobTracks.userId, userId)))
+      .leftJoin(interviews, eq(interviews.id, faqs.sourceInterviewId))
+      .leftJoin(jobTracks, and(eq(jobTracks.id, interviews.jobTrackId), eq(jobTracks.userId, userId)))
+      .where(and(...faqConditions))
       .orderBy(desc(faqs.createdAt)),
     db.select({
       id: interviews.id,
@@ -66,6 +77,7 @@ export async function getKnowledgeLibrary(userId: string, input: { query?: strin
   ]);
   return {
     filters,
+    faqCategories: categoryConfig,
     totalFaqCount: faqCountRows[0]?.count ?? 0,
     experiences: experienceRows,
     faqs: faqRows.map((row) => ({ ...row, createdAt: row.createdAt.toISOString() })),
@@ -77,6 +89,29 @@ export async function getKnowledgeLibrary(userId: string, input: { query?: strin
   };
 }
 
+export async function getExperienceOptions(userId: string) {
+  return getDatabaseRuntime().db.select({ id: experiences.id, name: experiences.name })
+    .from(experiences)
+    .where(eq(experiences.userId, userId))
+    .orderBy(desc(experiences.updatedAt));
+}
+
+export async function getFaqCategoryConfig(userId: string): Promise<FaqCategoryConfig> {
+  const rows = await getDatabaseRuntime().db.select({
+    kind: faqCategories.kind,
+    name: faqCategories.name,
+    deletedAt: faqCategories.deletedAt,
+  }).from(faqCategories)
+    .where(and(eq(faqCategories.userId, userId), eq(faqCategories.kind, "general")))
+    .orderBy(asc(faqCategories.sortOrder), asc(faqCategories.createdAt));
+
+  if (!rows.length) {
+    return [...defaultFaqCategories];
+  }
+
+  return rows.filter((row) => !row.deletedAt).map((row) => row.name);
+}
+
 export async function getExperienceDetail(userId: string, experienceId: string) {
   const db = getDatabaseRuntime().db;
   const [experience] = await db.select({
@@ -86,27 +121,30 @@ export async function getExperienceDetail(userId: string, experienceId: string) 
   }).from(experiences)
     .where(and(eq(experiences.userId, userId), eq(experiences.id, experienceId))).limit(1);
   if (!experience) throw new Error("NOT_FOUND: experience was not found");
-  const [faqRows, resumeRows] = await Promise.all([
+  const [faqRows, resumeRows, categoryConfig] = await Promise.all([
     db.select({
       id: faqs.id,
+      kind: faqs.kind,
       question: faqs.question,
       answer: faqs.answer,
       category: faqs.category,
+      experienceId: faqs.experienceId,
       companyName: jobTracks.companyName,
       roleName: jobTracks.roleName,
       roundLabel: interviews.roundLabel,
-      sourceInterviewId: interviews.id,
+      sourceInterviewId: faqs.sourceInterviewId,
     }).from(faqs)
-      .innerJoin(interviews, eq(interviews.id, faqs.sourceInterviewId))
-      .innerJoin(jobTracks, eq(jobTracks.id, interviews.jobTrackId))
-      .where(and(eq(faqs.userId, userId), eq(faqs.experienceId, experience.id), eq(jobTracks.userId, userId)))
+      .leftJoin(interviews, eq(interviews.id, faqs.sourceInterviewId))
+      .leftJoin(jobTracks, and(eq(jobTracks.id, interviews.jobTrackId), eq(jobTracks.userId, userId)))
+      .where(and(eq(faqs.userId, userId), eq(faqs.experienceId, experience.id)))
       .orderBy(desc(faqs.createdAt)),
     db.select({ id: resumes.id, name: resumes.name }).from(resumeExperiences)
       .innerJoin(resumes, eq(resumes.id, resumeExperiences.resumeId))
       .where(and(eq(resumes.userId, userId), eq(resumeExperiences.experienceId, experience.id)))
       .orderBy(desc(resumes.createdAt)),
+    getFaqCategoryConfig(userId),
   ]);
-  return { experience, faqs: faqRows, resumes: resumeRows };
+  return { experience, faqs: faqRows, resumes: resumeRows, faqCategories: categoryConfig };
 }
 
 export async function getInterviewKnowledgeDetail(userId: string, interviewId: string) {
@@ -140,9 +178,10 @@ export async function getInterviewKnowledgeDetail(userId: string, interviewId: s
     .leftJoin(assets, and(eq(assets.id, interviews.transcriptAssetId), eq(assets.userId, userId)))
     .where(and(eq(interviews.id, interviewId), eq(jobTracks.userId, userId))).limit(1);
   if (!interview) throw new Error("NOT_FOUND: interview was not found");
-  const [faqRows, experienceRows, taskRows] = await Promise.all([
+  const [faqRows, experienceRows, taskRows, categoryConfig] = await Promise.all([
     db.select({
       id: faqs.id,
+      kind: faqs.kind,
       question: faqs.question,
       answer: faqs.answer,
       category: faqs.category,
@@ -169,6 +208,7 @@ export async function getInterviewKnowledgeDetail(userId: string, interviewId: s
     }).from(tasks)
       .where(and(eq(tasks.userId, userId), eq(tasks.interviewId, interview.id)))
       .orderBy(asc(tasks.completedAt), asc(tasks.cancelledAt), asc(tasks.deadlineAt)),
+    getFaqCategoryConfig(userId),
   ]);
   return {
     interview: {
@@ -179,6 +219,7 @@ export async function getInterviewKnowledgeDetail(userId: string, interviewId: s
       reviewedAt: interview.reviewedAt?.toISOString() ?? null,
     },
     faqs: faqRows,
+    faqCategories: categoryConfig,
     experiences: experienceRows,
     tasks: taskRows.map((task) => ({
       ...task,

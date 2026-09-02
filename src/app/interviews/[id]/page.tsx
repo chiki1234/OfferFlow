@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, FileText, Video } from "lucide-react";
-import { FaqBatchForm } from "@/app/faq/knowledge-forms";
+import { FaqBatchForm, FaqEditor } from "@/app/faq/knowledge-forms";
 import {
   InterviewPrepTaskForm,
   InterviewScheduleEditor,
@@ -10,6 +10,7 @@ import {
   StatusActionButton,
 } from "@/app/jobs/[id]/job-actions-panel";
 import { getInterviewKnowledgeDetail } from "@/modules/interview-knowledge/queries";
+import { isFaqSettingsComplete } from "@/modules/interview-knowledge/faq-batch";
 import { getCurrentActor } from "@/shared/actor/current-actor";
 import { isDomainNotFoundError } from "@/shared/errors/domain-error";
 
@@ -60,7 +61,11 @@ export default async function InterviewDetailPage({ params }: { params: Promise<
 
         <section className="surface-card detail-section">
           <div className="section-title-row"><div><p className="eyebrow">本场沉淀</p><h2>FAQ</h2></div></div>
-          <div className="faq-card-list">{view.faqs.map((faq) => <article className="faq-card" key={faq.id}><div className="faq-card-meta"><span>{faq.category}</span><span>{faq.experienceName ?? "综合问题"}</span></div><h3>{faq.question}</h3><p>{faq.answer}</p></article>)}{!view.faqs.length && <p className="detail-note">面试后把整理好的 FAQ Blocks 粘贴到右侧。</p>}</div>
+          <div className="faq-card-list">{view.faqs.map((faq) => {
+            const settingsComplete = isFaqSettingsComplete(faq);
+            const settingLabel = faq.experienceId ? faq.experienceName ?? "已绑定经历" : faq.category ?? "暂不设置";
+            return <article className="faq-card" key={faq.id}><div className={settingsComplete ? "faq-card-meta" : "faq-card-meta incomplete"}><span>{settingLabel}</span></div><h3>{faq.question}</h3><p>{faq.answer || "暂未记录答案"}</p><FaqEditor faq={faq} experiences={view.experiences} faqCategories={view.faqCategories} incomplete={!settingsComplete} /></article>;
+          })}{!view.faqs.length && <p className="detail-note">面试后把整理好的 FAQ Blocks 粘贴到右侧。</p>}</div>
         </section>
       </div>
 
@@ -70,7 +75,7 @@ export default async function InterviewDetailPage({ params }: { params: Promise<
         {interview.status === "scheduled" && <InterviewScheduleEditor jobTrackId={interview.jobTrackId} interviewId={interview.id} token={randomUUID()} startAt={toLocalInput(interview.startAt)} endAt={toLocalInput(interview.endAt)} />}
         {interview.transcriptAssetId && <a className="transcript-file-link" href={`/api/assets/${interview.transcriptAssetId}`} target="_blank" rel="noreferrer">打开转录文件：{interview.transcriptAssetName ?? "Transcript"}</a>}
         <InterviewTranscriptForm jobTrackId={interview.jobTrackId} interviewId={interview.id} token={randomUUID()} transcriptText={interview.transcriptText} />
-        <FaqBatchForm token={randomUUID()} interviews={[{ id: interview.id, companyName: interview.companyName, roleName: interview.roleName, roundLabel: interview.roundLabel }]} experiences={view.experiences} />
+        <FaqBatchForm token={randomUUID()} interviews={[{ id: interview.id, companyName: interview.companyName, roleName: interview.roleName, roundLabel: interview.roundLabel }]} experiences={view.experiences} faqCategories={view.faqCategories} />
       </aside>
     </div>
   </main>;

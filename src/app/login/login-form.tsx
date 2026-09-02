@@ -2,12 +2,14 @@
 
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
+import { Eye, EyeOff } from "lucide-react";
 import { authClient } from "@/auth-client";
 
 export function LoginForm({ destination }: { destination: string }) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showPassword, setShowPassword] = useState(false);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -36,7 +38,18 @@ export function LoginForm({ destination }: { destination: string }) {
       </label>
       <label>
         <span>密码</span>
-        <input autoComplete="current-password" minLength={10} name="password" required type="password" />
+        <div className="password-field">
+          <input autoComplete="current-password" minLength={10} name="password" required type={showPassword ? "text" : "password"} />
+          <button
+            aria-label={showPassword ? "隐藏密码" : "显示密码"}
+            aria-pressed={showPassword}
+            className="password-visibility-button"
+            onClick={() => setShowPassword((visible) => !visible)}
+            type="button"
+          >
+            {showPassword ? <Eye aria-hidden="true" size={18} /> : <EyeOff aria-hidden="true" size={18} />}
+          </button>
+        </div>
       </label>
       {error && <p className="form-error" role="alert">{error}</p>}
       <button className="primary-button wide" disabled={pending} type="submit">

@@ -4,14 +4,18 @@ import {
   actionReceipts,
   events,
   experiences,
+  faqCategories,
   faqs,
   interviews,
   jobTracks,
   resumeExperiences,
   resumes,
 } from "@/db/schema";
+import type { AppDatabase } from "@/db/client";
 import { getDatabaseRuntime } from "@/db/runtime";
-import { validateFaqBatch, type FaqBatchItem } from "./faq-batch";
+import { defaultFaqCategories, validateFaqBatch, type FaqBatchItem, type ValidatedFaqBatchItem } from "./faq-batch";
+
+type AppTransaction = Parameters<Parameters<AppDatabase["transaction"]>[0]>[0];
 
 export async function createExperience(input: {
   userId: string;
@@ -35,6 +39,25 @@ export async function updateExperience(input: { userId: string; experienceId: st
     .returning({ id: experiences.id, name: experiences.name, content: experiences.content });
   if (!updated.length) throw new Error("NOT_FOUND: experience was not found");
   return updated[0];
+}
+
+export async function deleteExperience(input: { userId: string; experienceId: string }) {
+  return getDatabaseRuntime().db.transaction(async (transaction) => {
+    const [experience] = await transaction.select({ id: experiences.id }).from(experiences)
+      .where(and(eq(experiences.id, input.experienceId), eq(experiences.userId, input.userId))).limit(1);
+    if (!experience) throw new Error("NOT_FOUND: experience was not found");
+
+    const [usage] = await transaction.select({ count: sql<number>`count(*)::int` }).from(faqs)
+      .where(and(eq(faqs.userId, input.userId), eq(faqs.experienceId, experience.id)));
+    const faqCount = usage?.count ?? 0;
+    if (faqCount > 0) {
+      return { outcome: "blocked" as const, faqCount };
+    }
+
+    await transaction.delete(experiences)
+      .where(and(eq(experiences.id, experience.id), eq(experiences.userId, input.userId)));
+    return { outcome: "deleted" as const };
+  });
 }
 
 export async function setResumeExperiences(input: {
@@ -64,7 +87,7 @@ export async function setResumeExperiences(input: {
 export async function commitFaqBatch(input: {
   userId: string;
   idempotencyKey: string;
-  interviewId: string;
+  interviewId: string | null;
   items: FaqBatchItem[];
   committedAt: string;
 }) {
@@ -75,16 +98,18 @@ export async function commitFaqBatch(input: {
       .where(and(eq(actionReceipts.userId, input.userId), eq(actionReceipts.idempotencyKey, input.idempotencyKey))).limit(1);
     if (receipt) return receipt.result as { faqIds: string[]; interviewOccurred: boolean };
 
-    const [interview] = await transaction.select({
-      id: interviews.id,
-      jobTrackId: interviews.jobTrackId,
-      status: interviews.status,
-      occurredAt: interviews.occurredAt,
-    }).from(interviews)
-      .innerJoin(jobTracks, eq(jobTracks.id, interviews.jobTrackId))
-      .where(and(eq(interviews.id, input.interviewId), eq(jobTracks.userId, input.userId))).limit(1);
-    if (!interview) throw new Error("NOT_FOUND: interview was not found");
-    if (interview.status === "cancelled") throw new Error("CONFLICT: cancelled interview cannot receive FAQs");
+    const interview = input.interviewId
+      ? (await transaction.select({
+          id: interviews.id,
+          jobTrackId: interviews.jobTrackId,
+          status: interviews.status,
+          occurredAt: interviews.occurredAt,
+        }).from(interviews)
+          .innerJoin(jobTracks, eq(jobTracks.id, interviews.jobTrackId))
+          .where(and(eq(interviews.id, input.interviewId), eq(jobTracks.userId, input.userId))).limit(1))[0]
+      : null;
+    if (input.interviewId && !interview) throw new Error("NOT_FOUND: interview was not found");
+    if (interview?.status === "cancelled") throw new Error("CONFLICT: cancelled interview cannot receive FAQs");
 
     const experienceIds = [...new Set(items.flatMap((item) => item.experienceId ? [item.experienceId] : []))];
     if (experienceIds.length) {
@@ -92,9 +117,10 @@ export async function commitFaqBatch(input: {
         .where(and(eq(experiences.userId, input.userId), inArray(experiences.id, experienceIds)));
       if (owned.length !== experienceIds.length) throw new Error("NOT_FOUND: one or more experiences were not found");
     }
+    await assertFaqCategoriesSupported(transaction, input.userId, items);
 
-    const interviewOccurred = interview.occurredAt === null;
-    if (interviewOccurred) {
+    const interviewOccurred = interview?.occurredAt === null;
+    if (interview && interviewOccurred) {
       await transaction.update(interviews).set({
         occurredAt: committedAt,
         updatedAt: committedAt,
@@ -116,7 +142,7 @@ export async function commitFaqBatch(input: {
     const faqRows = items.map((item) => ({
       id: randomUUID(),
       userId: input.userId,
-      sourceInterviewId: interview.id,
+      sourceInterviewId: interview?.id ?? null,
       kind: item.kind,
       question: item.question,
       answer: item.answer,
@@ -151,6 +177,7 @@ export async function updateFaq(input: {
         .where(and(eq(experiences.id, item.experienceId), eq(experiences.userId, input.userId))).limit(1);
       if (!experience) throw new Error("NOT_FOUND: experience was not found");
     }
+    await assertFaqCategoriesSupported(transaction, input.userId, [item]);
     await transaction.update(faqs).set({
       question: item.question,
       answer: item.answer,
@@ -167,6 +194,126 @@ export async function deleteFaq(input: { userId: string; faqId: string }) {
     .where(and(eq(faqs.id, input.faqId), eq(faqs.userId, input.userId)))
     .returning({ id: faqs.id });
   if (!deleted.length) throw new Error("NOT_FOUND: FAQ was not found");
+}
+
+export async function createFaqCategory(input: { userId: string; name: string }) {
+  const name = normalizeFaqCategoryName(input.name);
+  return getDatabaseRuntime().db.transaction(async (transaction) => {
+    await initializeFaqCategories(transaction, input.userId);
+    const [existing] = await transaction.select({ id: faqCategories.id, deletedAt: faqCategories.deletedAt })
+      .from(faqCategories)
+      .where(and(
+        eq(faqCategories.userId, input.userId),
+        eq(faqCategories.kind, "general"),
+        eq(faqCategories.name, name),
+      )).limit(1);
+    if (existing && !existing.deletedAt) throw new Error("CONFLICT: FAQ category already exists");
+    if (existing) {
+      await transaction.update(faqCategories).set({ deletedAt: null, updatedAt: new Date() })
+        .where(eq(faqCategories.id, existing.id));
+      return { name };
+    }
+
+    const [last] = await transaction.select({
+      sortOrder: sql<number>`coalesce(max(${faqCategories.sortOrder}), -1)::int`,
+    }).from(faqCategories).where(and(eq(faqCategories.userId, input.userId), eq(faqCategories.kind, "general")));
+    await transaction.insert(faqCategories).values({
+      id: randomUUID(),
+      userId: input.userId,
+      kind: "general",
+      name,
+      sortOrder: (last?.sortOrder ?? -1) + 1,
+    });
+    return { name };
+  });
+}
+
+export async function renameFaqCategory(input: { userId: string; currentName: string; nextName: string }) {
+  const currentName = normalizeFaqCategoryName(input.currentName);
+  const nextName = normalizeFaqCategoryName(input.nextName);
+  return getDatabaseRuntime().db.transaction(async (transaction) => {
+    await initializeFaqCategories(transaction, input.userId);
+    const [category] = await transaction.select({ id: faqCategories.id })
+      .from(faqCategories)
+      .where(and(
+        eq(faqCategories.userId, input.userId),
+        eq(faqCategories.kind, "general"),
+        eq(faqCategories.name, currentName),
+        sql`${faqCategories.deletedAt} IS NULL`,
+      )).limit(1);
+    if (!category) throw new Error("NOT_FOUND: FAQ category was not found");
+    if (currentName === nextName) return { name: nextName };
+
+    const [collision] = await transaction.select({ id: faqCategories.id, deletedAt: faqCategories.deletedAt })
+      .from(faqCategories)
+      .where(and(
+        eq(faqCategories.userId, input.userId),
+        eq(faqCategories.kind, "general"),
+        eq(faqCategories.name, nextName),
+      )).limit(1);
+    if (collision && !collision.deletedAt) throw new Error("CONFLICT: FAQ category already exists");
+    if (collision) await transaction.delete(faqCategories).where(eq(faqCategories.id, collision.id));
+
+    await transaction.update(faqCategories).set({ name: nextName, updatedAt: new Date() })
+      .where(eq(faqCategories.id, category.id));
+    await transaction.update(faqs).set({ category: nextName, updatedAt: new Date() })
+      .where(and(eq(faqs.userId, input.userId), eq(faqs.kind, "general"), eq(faqs.category, currentName)));
+    return { name: nextName };
+  });
+}
+
+export async function deleteFaqCategory(input: { userId: string; name: string }) {
+  const name = normalizeFaqCategoryName(input.name);
+  return getDatabaseRuntime().db.transaction(async (transaction) => {
+    await initializeFaqCategories(transaction, input.userId);
+    const [category] = await transaction.select({ id: faqCategories.id })
+      .from(faqCategories)
+      .where(and(
+        eq(faqCategories.userId, input.userId),
+        eq(faqCategories.kind, "general"),
+        eq(faqCategories.name, name),
+        sql`${faqCategories.deletedAt} IS NULL`,
+      )).limit(1);
+    if (!category) throw new Error("NOT_FOUND: FAQ category was not found");
+
+    const resetFaqs = await transaction.update(faqs).set({ category: null, updatedAt: new Date() })
+      .where(and(eq(faqs.userId, input.userId), eq(faqs.kind, "general"), eq(faqs.category, name)))
+      .returning({ id: faqs.id });
+    await transaction.update(faqCategories).set({ deletedAt: new Date(), updatedAt: new Date() })
+      .where(eq(faqCategories.id, category.id));
+    return { resetFaqCount: resetFaqs.length };
+  });
+}
+
+async function initializeFaqCategories(transaction: AppTransaction, userId: string) {
+  const [existing] = await transaction.select({ id: faqCategories.id }).from(faqCategories)
+    .where(and(eq(faqCategories.userId, userId), eq(faqCategories.kind, "general"))).limit(1);
+  if (existing) return;
+  const rows = defaultFaqCategories.map((name, sortOrder) => ({ id: randomUUID(), userId, kind: "general" as const, name, sortOrder }));
+  await transaction.insert(faqCategories).values(rows).onConflictDoNothing({
+    target: [faqCategories.userId, faqCategories.kind, faqCategories.name],
+  });
+}
+
+async function assertFaqCategoriesSupported(transaction: AppTransaction, userId: string, items: ValidatedFaqBatchItem[]) {
+  const requested = items.flatMap((item) => item.category ? [item.category] : []);
+  if (!requested.length) return;
+  const rows = await transaction.select({ name: faqCategories.name, deletedAt: faqCategories.deletedAt })
+    .from(faqCategories).where(and(eq(faqCategories.userId, userId), eq(faqCategories.kind, "general")));
+  const supported = rows.length
+    ? rows.filter((row) => !row.deletedAt).map((row) => row.name)
+    : [...defaultFaqCategories];
+  if (requested.some((category) => !supported.includes(category))) {
+    throw new Error("VALIDATION_ERROR: FAQ category is not supported");
+  }
+}
+
+function normalizeFaqCategoryName(value: string) {
+  const name = value.trim();
+  if (!name || name.length > 64 || name === "暂不设置") {
+    throw new Error("VALIDATION_ERROR: FAQ category name is invalid");
+  }
+  return name;
 }
 
 function parseTimestamp(value: string) {

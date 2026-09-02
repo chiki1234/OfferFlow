@@ -5,6 +5,8 @@ import type {
   CancelInterviewResult,
   CancelAssessmentCommand,
   CancelAssessmentResult,
+  DeleteAssessmentCommand,
+  DeleteAssessmentResult,
   CompleteAssessmentCommand,
   CompleteAssessmentResult,
   CompleteInterviewReviewCommand,
@@ -21,6 +23,8 @@ import type {
   UpdateTaskResult,
   DeletePlannedJobTrackCommand,
   DeletePlannedJobTrackResult,
+  DeleteInterviewCommand,
+  DeleteInterviewResult,
   EndJobTrackResult,
   EndJobTrackCommand,
   CreateJobTrackCommand,
@@ -110,12 +114,16 @@ async function executeCommand(
       return executeCompleteAssessment(command, context, transaction, generateId);
     case "cancel_assessment":
       return executeCancelAssessment(command, context, transaction, generateId);
+    case "delete_assessment":
+      return executeDeleteAssessment(command, context, transaction);
     case "schedule_interview":
       return executeScheduleInterview(command, context, transaction, generateId);
     case "reschedule_interview":
       return executeRescheduleInterview(command, context, transaction, generateId);
     case "cancel_interview":
       return executeCancelInterview(command, context, transaction, generateId);
+    case "delete_interview":
+      return executeDeleteInterview(command, context, transaction);
     case "confirm_interview_occurred":
       return executeConfirmInterviewOccurred(command, context, transaction, generateId);
     case "complete_interview_review":
@@ -237,6 +245,17 @@ async function executeCancelAssessment(
     subjectType: "assessment", subjectId: cancelled.assessment.id, occurredAt: cancelledAt, payload: {},
   });
   return { outcome: "assessment_cancelled", assessment: cancelled.assessment, task: cancelled.task, event };
+}
+
+async function executeDeleteAssessment(
+  command: DeleteAssessmentCommand,
+  context: ActorContext,
+  transaction: JobWorkflowTransaction,
+): Promise<DeleteAssessmentResult> {
+  const existing = await transaction.findAssessmentWithTask(context.userId, command.assessmentId);
+  if (!existing) throw new Error("NOT_FOUND: assessment was not found");
+  await transaction.deleteAssessmentWithRelatedData({ userId: context.userId, assessmentId: existing.assessment.id });
+  return { outcome: "assessment_deleted", assessmentId: existing.assessment.id, jobTrackId: existing.assessment.jobTrackId };
 }
 
 async function executeRecordGenericProgress(
@@ -495,6 +514,17 @@ async function executeCancelInterview(
   });
 
   return { outcome: "interview_cancelled", interview, event };
+}
+
+async function executeDeleteInterview(
+  command: DeleteInterviewCommand,
+  context: ActorContext,
+  transaction: JobWorkflowTransaction,
+): Promise<DeleteInterviewResult> {
+  const existing = await transaction.findInterview(context.userId, command.interviewId);
+  if (!existing) throw new Error("NOT_FOUND: interview was not found");
+  await transaction.deleteInterviewWithRelatedData({ userId: context.userId, interviewId: existing.id });
+  return { outcome: "interview_deleted", interviewId: existing.id, jobTrackId: existing.jobTrackId };
 }
 
 async function executeRescheduleInterview(

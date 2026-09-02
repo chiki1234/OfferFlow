@@ -313,20 +313,37 @@ export const faqs = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
-    sourceInterviewId: uuid("source_interview_id").notNull().references(() => interviews.id, { onDelete: "cascade" }),
+    sourceInterviewId: uuid("source_interview_id").references(() => interviews.id, { onDelete: "cascade" }),
     kind: faqKind("kind").notNull(),
     question: text("question").notNull(),
     answer: text("answer").notNull(),
     experienceId: uuid("experience_id").references(() => experiences.id, { onDelete: "restrict" }),
-    category: varchar("category", { length: 64 }).notNull(),
+    category: varchar("category", { length: 64 }),
     canonicalQuestionId: uuid("canonical_question_id"),
     ...timestamps,
   },
   (table) => [
-    check("faqs_experience_kind_check", sql`(${table.kind} = 'experience' AND ${table.experienceId} IS NOT NULL) OR (${table.kind} = 'general' AND ${table.experienceId} IS NULL)`),
+    check("faqs_experience_kind_check", sql`(${table.kind} = 'experience' AND ${table.experienceId} IS NOT NULL AND ${table.category} IS NULL) OR (${table.kind} = 'general' AND ${table.experienceId} IS NULL)`),
     index("faqs_user_kind_category_idx").on(table.userId, table.kind, table.category),
     index("faqs_experience_created_idx").on(table.experienceId, table.createdAt),
     index("faqs_source_interview_idx").on(table.sourceInterviewId),
+  ],
+);
+
+export const faqCategories = pgTable(
+  "faq_categories",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    kind: faqKind("kind").notNull(),
+    name: varchar("name", { length: 64 }).notNull(),
+    sortOrder: integer("sort_order").notNull().default(0),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("faq_categories_user_kind_name_unique").on(table.userId, table.kind, table.name),
+    index("faq_categories_user_kind_sort_idx").on(table.userId, table.kind, table.sortOrder),
   ],
 );
 

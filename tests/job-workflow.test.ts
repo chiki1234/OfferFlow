@@ -621,6 +621,33 @@ describe("JobWorkflow", () => {
     expect(cancelled).toMatchObject({ outcome: "assessment_cancelled", assessment: { status: "cancelled", cancelledAt: "2026-09-03T06:00:00.000Z" }, task: { id: invited.task?.id, cancelledAt: "2026-09-03T06:00:00.000Z" }, event: { kind: "AssessmentCancelled" } });
   });
 
+  it("彻底删除测评会同时删除关联待办", async () => {
+    const workflow = createInMemoryJobWorkflow({ resumes: [{ id: "resume-delete-assessment", userId: "user-1" }] });
+    const created = await workflow.execute({ type: "create_job_track", idempotencyKey: "delete-assessment-create", companyName: "滴滴", roleName: "产品经理", jobDescription: { text: "智能出行" } }, { userId: "user-1" });
+    await workflow.execute({ type: "submit_application", idempotencyKey: "delete-assessment-submit", jobTrackId: created.jobTrack.id, resumeId: "resume-delete-assessment", submittedAt: "2026-09-01T15:00:00.000Z" }, { userId: "user-1" });
+    const invited = await workflow.execute({ type: "record_assessment_invite", idempotencyKey: "delete-assessment-invite", jobTrackId: created.jobTrack.id, assessmentKind: "written_test", title: "在线笔试", timing: { type: "deadline", deadlineAt: "2026-09-12T15:59:00.000Z" }, receivedAt: "2026-09-02T06:00:00.000Z" }, { userId: "user-1" });
+
+    const deleted = await workflow.execute({ type: "delete_assessment", idempotencyKey: "delete-assessment-record", assessmentId: invited.assessment.id }, { userId: "user-1" });
+
+    expect(deleted).toEqual({ outcome: "assessment_deleted", assessmentId: invited.assessment.id, jobTrackId: created.jobTrack.id });
+    await expect(workflow.execute({ type: "complete_assessment", idempotencyKey: "delete-assessment-complete-after", assessmentId: invited.assessment.id, completedAt: "2026-09-03T06:00:00.000Z" }, { userId: "user-1" })).rejects.toThrow("NOT_FOUND");
+    await expect(workflow.execute({ type: "complete_task", idempotencyKey: "delete-assessment-task-after", taskId: invited.task!.id, completedAt: "2026-09-03T06:00:00.000Z" }, { userId: "user-1" })).rejects.toThrow("NOT_FOUND");
+  });
+
+  it("彻底删除面试会同时删除关联准备待办", async () => {
+    const workflow = createInMemoryJobWorkflow({ resumes: [{ id: "resume-delete-interview", userId: "user-1" }] });
+    const created = await workflow.execute({ type: "create_job_track", idempotencyKey: "delete-interview-create", companyName: "小米", roleName: "产品经理", jobDescription: { text: "智能助手" } }, { userId: "user-1" });
+    await workflow.execute({ type: "submit_application", idempotencyKey: "delete-interview-submit", jobTrackId: created.jobTrack.id, resumeId: "resume-delete-interview", submittedAt: "2026-09-01T15:00:00.000Z" }, { userId: "user-1" });
+    const scheduled = await workflow.execute({ type: "schedule_interview", idempotencyKey: "delete-interview-schedule", jobTrackId: created.jobTrack.id, roundLabel: "一面", interviewType: "视频面试", startAt: "2026-09-12T02:00:00.000Z", endAt: "2026-09-12T03:00:00.000Z", receivedAt: "2026-09-02T06:00:00.000Z" }, { userId: "user-1" });
+    const task = await workflow.execute({ type: "create_task", idempotencyKey: "delete-interview-task", jobTrackId: created.jobTrack.id, interviewId: scheduled.interview.id, kind: "interview_prep", title: "准备一面", deadlineAt: "2026-09-11T10:00:00.000Z" }, { userId: "user-1" });
+
+    const deleted = await workflow.execute({ type: "delete_interview", idempotencyKey: "delete-interview-record", interviewId: scheduled.interview.id }, { userId: "user-1" });
+
+    expect(deleted).toEqual({ outcome: "interview_deleted", interviewId: scheduled.interview.id, jobTrackId: created.jobTrack.id });
+    await expect(workflow.execute({ type: "confirm_interview_occurred", idempotencyKey: "delete-interview-occurred-after", interviewId: scheduled.interview.id, occurredAt: "2026-09-12T03:00:00.000Z" }, { userId: "user-1" })).rejects.toThrow("NOT_FOUND");
+    await expect(workflow.execute({ type: "complete_task", idempotencyKey: "delete-interview-task-after", taskId: task.task.id, completedAt: "2026-09-11T10:00:00.000Z" }, { userId: "user-1" })).rejects.toThrow("NOT_FOUND");
+  });
+
   it("未投递岗位可删除，不会伪造结束历史", async () => {
     const workflow = createInMemoryJobWorkflow();
     const created = await workflow.execute({ type: "create_job_track", idempotencyKey: "delete-planned-create", companyName: "联想", roleName: "AI 产品经理", jobDescription: { text: "AI PC 产品" } }, { userId: "user-1" });

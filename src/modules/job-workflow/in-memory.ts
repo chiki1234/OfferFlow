@@ -164,6 +164,24 @@ function createMemoryTransaction(state: MemoryState): JobWorkflowTransaction {
       if (cancelledTask) state.tasks.set(cancelledTask.id, cancelledTask);
       return { assessment: cancelledAssessment, task: cancelledTask };
     },
+    async deleteAssessmentWithRelatedData(input) {
+      const assessment = state.assessments.get(input.assessmentId);
+      const jobTrack = assessment ? state.jobTracks.get(assessment.jobTrackId) : null;
+      if (!assessment || jobTrack?.userId !== input.userId) throw new Error("NOT_FOUND: assessment was not found");
+      const relatedIds = new Set([assessment.id]);
+      for (const [taskId, task] of state.tasks) {
+        if (task.assessmentId === assessment.id) {
+          relatedIds.add(taskId);
+          state.tasks.delete(taskId);
+          state.taskOwners.delete(taskId);
+        }
+      }
+      state.events = state.events.filter((event) => !relatedIds.has(event.subjectId));
+      for (const [receiptKey, receipt] of state.receipts) {
+        if (receiptKey.startsWith(`${input.userId}:`) && JSON.stringify(receipt).includes(assessment.id)) state.receipts.delete(receiptKey);
+      }
+      state.assessments.delete(assessment.id);
+    },
     async insertInterview(interview) {
       state.interviews.set(interview.id, interview);
       return interview;
@@ -196,6 +214,24 @@ function createMemoryTransaction(state: MemoryState): JobWorkflowTransaction {
       };
       state.interviews.set(cancelled.id, cancelled);
       return cancelled;
+    },
+    async deleteInterviewWithRelatedData(input) {
+      const interview = state.interviews.get(input.interviewId);
+      const jobTrack = interview ? state.jobTracks.get(interview.jobTrackId) : null;
+      if (!interview || jobTrack?.userId !== input.userId) throw new Error("NOT_FOUND: interview was not found");
+      const relatedIds = new Set([interview.id]);
+      for (const [taskId, task] of state.tasks) {
+        if (task.interviewId === interview.id) {
+          relatedIds.add(taskId);
+          state.tasks.delete(taskId);
+          state.taskOwners.delete(taskId);
+        }
+      }
+      state.events = state.events.filter((event) => !relatedIds.has(event.subjectId));
+      for (const [receiptKey, receipt] of state.receipts) {
+        if (receiptKey.startsWith(`${input.userId}:`) && JSON.stringify(receipt).includes(interview.id)) state.receipts.delete(receiptKey);
+      }
+      state.interviews.delete(interview.id);
     },
     async markInterviewOccurred(input) {
       const interview = state.interviews.get(input.interviewId);

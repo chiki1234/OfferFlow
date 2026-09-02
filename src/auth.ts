@@ -12,7 +12,7 @@ const authenticationMode = resolveAuthenticationMode(process.env);
 if (authenticationMode === "password") validateAuthenticationEnvironment(process.env);
 
 export const auth = betterAuth({
-  appName: "求职轨迹",
+  appName: "OfferFlow",
   baseURL: process.env.APP_URL,
   secret: process.env.AUTH_SECRET ?? localModeSecret,
   database: drizzleAdapter(getDatabaseRuntime().db, {

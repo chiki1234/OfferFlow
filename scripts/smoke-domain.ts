@@ -106,9 +106,15 @@ try {
     items: [{
       question: "这条集成链路验证了什么？",
       answer: "验证 FAQ 能从 Interview 沉淀到 Experience，并在下一场面试前复用。",
-      kind: "experience",
-      category: "技术实现",
+      binding: "bound",
+      category: null,
       experienceId: experience.id,
+    }, {
+      question: "为什么考虑这个岗位？",
+      answer: "验证未绑定经历且暂未分类的 FAQ 也可以导入。",
+      binding: "unbound",
+      category: null,
+      experienceId: null,
     }],
   });
 
@@ -153,7 +159,8 @@ try {
   assert.ok(dashboard.todayItems.some((item) => item.id === pastInterview.interview.id && item.sourceType === "interview_review"));
   assert.ok(calendar.items.some((item) => item.id === futureInterview.interview.id));
   assert.equal(interviewDetail.interview.transcriptAssetId, transcript.id);
-  assert.equal(interviewDetail.faqs.length, 1);
+  assert.equal(interviewDetail.faqs.length, 2);
+  assert.ok(interviewDetail.faqs.some((faq) => faq.kind === "general" && faq.category === null && faq.experienceId === null));
   assert.equal(experienceDetail.faqs.length, 1);
   assert.ok(!primaryJobs.items.some((item) => item.id === otherJob.jobTrack.id));
   assert.ok(otherJobs.items.some((item) => item.id === otherJob.jobTrack.id));
