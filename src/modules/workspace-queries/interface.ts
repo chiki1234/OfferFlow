@@ -79,6 +79,9 @@ export type DashboardActionItem = {
   title: string;
   dueAt: string;
   overdue: boolean;
+  taskKind?: TaskView["kind"];
+  interviewId?: string | null;
+  timeSource?: "deadline" | "start" | "interview";
 };
 
 export type DashboardView = {

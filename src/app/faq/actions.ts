@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { NO_SOURCE_INTERVIEW } from "@/modules/interview-knowledge/faq-batch";
 import { commitFaqBatch, createExperience, createFaqCategory, deleteExperience, deleteFaq, deleteFaqCategory, renameFaqCategory, setResumeExperiences, updateExperience, updateFaq } from "@/modules/interview-knowledge/service";
 import { getCurrentActor } from "@/shared/actor/current-actor";
 import { logServerError } from "@/shared/logging/server-error";
@@ -55,7 +56,7 @@ export async function deleteExperienceAction(_state: KnowledgeActionState, formD
 export async function commitFaqBatchAction(_state: KnowledgeActionState, formData: FormData): Promise<KnowledgeActionState> {
   try {
     const data = z.object({
-      idempotencyKey: z.string().min(8), interviewId: z.uuid(), itemsJson: z.string().min(2).max(1_000_000),
+      idempotencyKey: z.string().min(8), interviewId: z.union([z.uuid(), z.literal(NO_SOURCE_INTERVIEW)]).transform((value) => value === NO_SOURCE_INTERVIEW ? null : value), itemsJson: z.string().min(2).max(1_000_000),
     }).parse({
       idempotencyKey: formData.get("idempotencyKey"), interviewId: formData.get("interviewId"), itemsJson: formData.get("itemsJson"),
     });

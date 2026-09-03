@@ -166,19 +166,52 @@ describe("FAQ batch required-field feedback", () => {
   it("allows clicking without available interviews and explains how to proceed", async () => {
     await renderForm({ interviews: [] });
     expect(submit().disabled).toBe(false);
-    expect(container.textContent).toContain("暂无可选面试，请先创建面试");
+    expect(container.textContent).toContain("暂无可选面试，可选择“无来源面试”");
     await click(submit());
     expect(document.activeElement).toBe(source());
   });
 
-  it.each([null, "removed-interview"])("requires a source for restored drafts without a selectable source: %s", async (sourceInterviewId) => {
+  it("requires a new choice when the restored interview no longer exists", async () => {
     const items = [{ question: "恢复的问题", answer: "", binding: "unbound" as const, category: null, experienceId: null }];
-    await renderForm({ initialDraft: { batchId: "batch-1", sourceInterviewId, items } });
+    await renderForm({ initialDraft: { batchId: "batch-1", sourceInterviewId: "removed-interview", items } });
     expect(source().value).toBe("");
     await click(submit());
     expect(invalidFields()).toEqual([source()]);
     await fill(source(), "interview-1");
     await click(submit());
+    expect(choice()).not.toBeNull();
+  });
+
+  it.each([{ interviews: [] }, { interviews: props.interviews }])("allows explicitly choosing no source with interview options $interviews", async ({ interviews }) => {
+    await renderForm({ interviews });
+    const noSource = Array.from(source().options).find((option) => option.textContent === "无来源面试")!;
+    expect(noSource).toBeDefined();
+    expect(source().value).toBe("");
+    await fill(blocks(), "Q: 无来源问题");
+    await fill(drafts()[0].querySelector("select")!, "unbound");
+    await click(submit());
+    expect(invalidFields()).toEqual([source()]);
+    await fill(source(), noSource.value);
+    expect(invalidFields()).toEqual([]);
+    await click(submit());
+    expect(choice()).not.toBeNull();
+    await click(Array.from(choice()!.querySelectorAll("button")).find((button) => button.textContent === "返回编辑")!);
+    expect(source().value).toBe("none");
+    await fill(source(), "");
+    await click(submit());
+    expect(choice()).toBeNull();
+    expect(invalidFields()).toEqual([source()]);
+    await fill(source(), noSource.value);
+    await click(submit());
+    await click(Array.from(choice()!.querySelectorAll("button")).find((button) => button.textContent === "不分析，直接导入")!);
+    expect((commit.mock.calls[0][1] as FormData).get("interviewId")).toBe("none");
+  });
+
+  it("restores a saved no-source draft as an explicit no-source selection", async () => {
+    await renderForm({ interviews: [], initialDraft: { batchId: "batch-1", sourceInterviewId: null, items: [{ question: "无来源草稿", answer: "", binding: "unbound", category: null, experienceId: null }] } });
+    expect(source().value).toBe("none");
+    await click(submit());
+    expect(invalidFields()).toEqual([]);
     expect(choice()).not.toBeNull();
   });
 

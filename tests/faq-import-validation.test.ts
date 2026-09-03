@@ -49,4 +49,10 @@ describe.each(actions)("required source in $name", ({ run }) => {
     const persistence = commit.mock.calls.length ? commit : createBatch;
     expect(persistence).toHaveBeenCalledWith(expect.objectContaining({ interviewId, items: [{ question: "测试问题", answer: "", binding: "unbound", category: null, experienceId: null }] }));
   });
+
+  it("accepts an explicit no-source choice and persists null instead of the option value", async () => {
+    expect((await run(form("none"))).error).toBeNull();
+    const persistence = commit.mock.calls.length ? commit : createBatch;
+    expect(persistence).toHaveBeenCalledWith(expect.objectContaining({ interviewId: null }));
+  });
 });

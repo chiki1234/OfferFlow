@@ -2,12 +2,13 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { NO_SOURCE_INTERVIEW } from "@/modules/interview-knowledge/faq-batch";
 import { getCurrentActor } from "@/shared/actor/current-actor";
 import { createFaqImportBatch, faqImportErrorMessage, finalizeFaqImportBatch, generateFaqImportAnswer, retryFaqImportAnalysis } from "@/modules/interview-knowledge/faq-import";
 
 function parseImportForm(formData: FormData) {
   const data = z.object({
-    idempotencyKey: z.string().min(8).max(255), interviewId: z.uuid(), itemsJson: z.string().max(1_000_000), replaceBatchId: z.uuid().optional(),
+    idempotencyKey: z.string().min(8).max(255), interviewId: z.union([z.uuid(), z.literal(NO_SOURCE_INTERVIEW)]).transform((value) => value === NO_SOURCE_INTERVIEW ? null : value), itemsJson: z.string().max(1_000_000), replaceBatchId: z.uuid().optional(),
   }).parse(Object.fromEntries(formData));
   const items = z.array(z.object({ question: z.string().trim().min(1).max(10_000), answer: z.string().trim().max(100_000), binding: z.enum(["bound", "unbound"]), category: z.string().max(64).nullable(), experienceId: z.uuid().nullable() })).min(1).max(100).parse(JSON.parse(data.itemsJson));
   return { idempotencyKey: data.idempotencyKey, interviewId: data.interviewId, items, replaceBatchId: data.replaceBatchId };

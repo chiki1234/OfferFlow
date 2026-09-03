@@ -5,7 +5,7 @@ import { useFormStatus } from "react-dom";
 import { useRouter } from "next/navigation";
 import { AlertCircle, Pencil, Plus, Settings2, Trash2 } from "lucide-react";
 import { OperationModal } from "@/components/operation-modal";
-import type { FaqBatchItem, FaqBinding, FaqCategoryConfig } from "@/modules/interview-knowledge/faq-batch";
+import { NO_SOURCE_INTERVIEW, type FaqBatchItem, type FaqBinding, type FaqCategoryConfig } from "@/modules/interview-knowledge/faq-batch";
 import { parseFaqBlocks } from "@/modules/interview-knowledge/faq-parser";
 import { commitFaqBatchAction, createExperienceAction, createFaqCategoryAction, deleteFaqAction, deleteFaqCategoryAction, renameFaqCategoryAction, setResumeExperiencesAction, updateExperienceAction, updateFaqAction, type KnowledgeActionState } from "./actions";
 import { beginFaqAnalysis, importEditedFaqBatch } from "./import-actions";
@@ -31,7 +31,7 @@ export function FaqBatchForm({ token, interviews, experiences, faqCategories, on
   const router = useRouter();
   const [state, action, pending] = useActionState(commitFaqBatchAction, initialState);
   const formRef = useRef<HTMLFormElement>(null);
-  const [interviewId, setInterviewId] = useState(initialDraft?.sourceInterviewId ?? "");
+  const [interviewId, setInterviewId] = useState(initialDraft ? initialDraft.sourceInterviewId ?? NO_SOURCE_INTERVIEW : "");
   const [validationAttempt, setValidationAttempt] = useState(0);
   const selectionErrorId = useId();
   const editedSubmission = useRef<{ payload: string; key: string } | null>(null);
@@ -47,7 +47,7 @@ export function FaqBatchForm({ token, interviews, experiences, faqCategories, on
   })) ?? []);
   const parsed = useMemo(() => raw.trim() ? parseFaqBlocks(raw) : [], [raw]);
   const selectedDrafts = drafts.filter((draft) => draft.selected);
-  const sourceMissing = !interviews.some((interview) => interview.id === interviewId);
+  const sourceMissing = interviewId !== NO_SOURCE_INTERVIEW && !interviews.some((interview) => interview.id === interviewId);
   const rawError = !raw.trim() ? "请填写 FAQ 内容。" : !drafts.length ? "请至少填写一个包含问题的 Q: Block。" : null;
   const canSubmit = Boolean(!sourceMissing && !rawError && selectedDrafts.length > 0 && selectedDrafts.every((draft) =>
     draft.question.trim() && draft.binding && (draft.binding === "unbound" || draft.experienceId),
@@ -129,8 +129,8 @@ export function FaqBatchForm({ token, interviews, experiences, faqCategories, on
   }
 
   return <><form action={action} ref={formRef} noValidate onSubmit={(event) => { event.preventDefault(); setValidationAttempt((attempt) => attempt + 1); if (canSubmit && !starting && !pending) { setAnalysisError(null); setChoiceOpen(true); } }} className="create-form knowledge-form faq-import-form"><input type="hidden" name="idempotencyKey" value={importKey} />{editingBatchId && <input type="hidden" name="replaceBatchId" value={editingBatchId} />}<input type="hidden" name="itemsJson" value={JSON.stringify(selectedDrafts.map(({ question, answer, binding, category, experienceId }) => ({ question, answer, binding, category: binding === "unbound" ? category || null : null, experienceId: binding === "bound" ? experienceId || null : null })))} /><h3>批量导入 FAQ</h3>
-    <label>来源面试（必填）<select name="interviewId" required value={sourceMissing ? "" : interviewId} aria-invalid={showValidation && sourceMissing} onChange={(event) => setInterviewId(event.target.value)}><option value="">请选择来源面试</option>{interviews.map((item) => <option key={item.id} value={item.id}>{item.companyName} · {item.roleName} · {item.roundLabel}</option>)}</select>{showValidation && sourceMissing && <span className="faq-field-error">请选择来源面试。</span>}</label>
-    {!interviews.length && <p className="form-hint">暂无可选面试，请先创建面试，再导入 FAQ。</p>}
+    <label>来源面试（必填）<select name="interviewId" required value={sourceMissing ? "" : interviewId} aria-invalid={showValidation && sourceMissing} onChange={(event) => setInterviewId(event.target.value)}><option value="">请选择来源面试</option><option value={NO_SOURCE_INTERVIEW}>无来源面试</option>{interviews.map((item) => <option key={item.id} value={item.id}>{item.companyName} · {item.roleName} · {item.roundLabel}</option>)}</select>{showValidation && sourceMissing && <span className="faq-field-error">请选择来源面试。</span>}</label>
+    {!interviews.length && <p className="form-hint">暂无可选面试，可选择“无来源面试”，或先创建面试后关联。</p>}
     <label>FAQ Blocks（必填）<textarea rows={10} value={raw} aria-invalid={showValidation && Boolean(rawError)} onChange={(event) => handleRawChange(event.target.value)} placeholder={"### Q：为什么这样设计？\nA：因为…\n\n---\n\nQ: 还遇到了什么挑战？"} required />{showValidation && rawError && <span className="faq-field-error">{rawError}</span>}</label>
     {parsed.length > 0 && <div className="parse-summary"><strong>{parsed.filter((item) => item.status === "valid").length} 条可导入</strong>{parsed.some((item) => item.status === "invalid") && <span>{parsed.filter((item) => item.status === "invalid").length} 个 Block 需修正，本次会跳过</span>}</div>}
     {drafts.length > 0 && <>

@@ -412,6 +412,7 @@ async function readDashboard(
       .map(({ row, dueAt }) => ({
         id: row.id,
         sourceType: "assessment" as const,
+        timeSource: row.timingType === "deadline" ? "deadline" as const : "start" as const,
         jobTrackId: row.jobTrackId,
         companyName: row.companyName,
         roleName: row.roleName,
@@ -422,6 +423,9 @@ async function readDashboard(
     ...dueTaskRows.map((row) => ({
         id: row.id,
         sourceType: "task" as const,
+        taskKind: row.kind,
+        interviewId: row.interviewId,
+        timeSource: "deadline" as const,
         jobTrackId: row.jobTrackId,
         companyName: row.companyName,
         roleName: row.roleName,
@@ -432,6 +436,9 @@ async function readDashboard(
     ...imminentPreparationTasks.map(({ task: row, dueAt }) => ({
       id: row.id,
       sourceType: "task" as const,
+      taskKind: row.kind,
+      interviewId: row.interviewId,
+      timeSource: "interview" as const,
       jobTrackId: row.jobTrackId,
       companyName: row.companyName,
       roleName: row.roleName,

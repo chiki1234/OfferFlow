@@ -93,7 +93,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
       <section className="surface-card detail-section">
         <div className="section-title-row"><h2>测评与面试</h2></div>
         <div className="milestone-list">
-          {view.assessments.map((item) => <article className="milestone-item" key={item.id}>
+          {view.assessments.map((item) => <article className="milestone-item" id={`assessment-${item.id}`} key={item.id}>
             <div><strong>{item.title}</strong><p>{item.timing.type === "deadline" ? `截止 ${formatDateTime(item.timing.deadlineAt)}` : `${formatDateTime(item.timing.startAt)} – ${formatDateTime(item.timing.endAt)}`}</p></div>
             <span className={`status-pill ${item.status}`}>{statusLabel(item.status)}</span>
             <div className="milestone-actions">
@@ -116,7 +116,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
       <section className="surface-card detail-section">
         <div className="section-title-row"><h2>待办</h2></div>
         <div className="milestone-list">
-          {ordinaryTasks.map((task) => <article className="milestone-item" key={task.id}><div><strong>{task.title}</strong><p>{task.deadlineAt ? `截止 ${formatDateTime(task.deadlineAt)}` : "无截止时间"}</p>{task.interviewId && <small>已关联面试</small>}{!task.completedAt && !task.cancelledAt && <TaskEditor interviews={view.interviews.map(({ id: interviewId, roundLabel, interviewType }) => ({ id: interviewId, roundLabel, interviewType }))} jobTrackId={id} task={task} token={randomUUID()} />}</div><span className={`status-pill ${task.completedAt ? "completed" : task.cancelledAt ? "cancelled" : "pending"}`}>{task.completedAt ? "已完成" : task.cancelledAt ? "已取消" : "待完成"}</span>{!task.completedAt && !task.cancelledAt && <div className="milestone-actions"><StatusActionButton intent="complete_task" jobTrackId={id} label="完成" subjectId={task.id} token={randomUUID()} /><StatusActionButton intent="cancel_task" jobTrackId={id} label="取消" subjectId={task.id} token={randomUUID()} /></div>}</article>)}
+          {ordinaryTasks.map((task) => <article className="milestone-item" id={`task-${task.id}`} key={task.id}><div><strong>{task.title}</strong><p>{task.deadlineAt ? `截止 ${formatDateTime(task.deadlineAt)}` : "无截止时间"}</p>{task.interviewId && <small>已关联面试</small>}{!task.completedAt && !task.cancelledAt && <TaskEditor interviews={view.interviews.map(({ id: interviewId, roundLabel, interviewType }) => ({ id: interviewId, roundLabel, interviewType }))} jobTrackId={id} task={task} token={randomUUID()} />}</div><span className={`status-pill ${task.completedAt ? "completed" : task.cancelledAt ? "cancelled" : "pending"}`}>{task.completedAt ? "已完成" : task.cancelledAt ? "已取消" : "待完成"}</span>{!task.completedAt && !task.cancelledAt && <div className="milestone-actions"><StatusActionButton intent="complete_task" jobTrackId={id} label="完成" subjectId={task.id} token={randomUUID()} /><StatusActionButton intent="cancel_task" jobTrackId={id} label="取消" subjectId={task.id} token={randomUUID()} /></div>}</article>)}
           {!ordinaryTasks.length && <p className="detail-note">还没有普通待办。</p>}
         </div>
       </section>

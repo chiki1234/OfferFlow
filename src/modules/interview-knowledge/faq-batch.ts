@@ -7,6 +7,8 @@ export const defaultFaqCategories = [
   "其他",
 ] as const;
 
+export const NO_SOURCE_INTERVIEW = "none";
+
 export type FaqKind = "experience" | "general";
 export type FaqBinding = "bound" | "unbound";
 export type FaqCategoryConfig = string[];
