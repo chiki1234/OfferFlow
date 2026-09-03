@@ -5,6 +5,7 @@ import {
   events,
   experiences,
   faqCategories,
+  faqOccurrences,
   faqs,
   interviews,
   jobTracks,
@@ -142,7 +143,6 @@ export async function commitFaqBatch(input: {
     const faqRows = items.map((item) => ({
       id: randomUUID(),
       userId: input.userId,
-      sourceInterviewId: interview?.id ?? null,
       kind: item.kind,
       question: item.question,
       answer: item.answer,
@@ -150,6 +150,7 @@ export async function commitFaqBatch(input: {
       category: item.category,
     }));
     await transaction.insert(faqs).values(faqRows);
+    await transaction.insert(faqOccurrences).values(faqRows.map((faq) => ({ faqId: faq.id, sourceInterviewId: interview?.id ?? null })));
     const result = { faqIds: faqRows.map((faq) => faq.id), interviewOccurred };
     await transaction.insert(actionReceipts).values({
       userId: input.userId,
@@ -295,7 +296,7 @@ async function initializeFaqCategories(transaction: AppTransaction, userId: stri
   });
 }
 
-async function assertFaqCategoriesSupported(transaction: AppTransaction, userId: string, items: ValidatedFaqBatchItem[]) {
+export async function assertFaqCategoriesSupported(transaction: AppTransaction, userId: string, items: ValidatedFaqBatchItem[]) {
   const requested = items.flatMap((item) => item.category ? [item.category] : []);
   if (!requested.length) return;
   const rows = await transaction.select({ name: faqCategories.name, deletedAt: faqCategories.deletedAt })

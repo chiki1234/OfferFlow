@@ -7,6 +7,7 @@ import {
   experienceGroups,
   experiences,
   faqCategories,
+  faqOccurrences,
   faqs,
   interviews,
   jobDescriptions,
@@ -20,7 +21,7 @@ import { getDatabaseRuntime } from "@/db/runtime";
 
 export async function exportUserData(userId: string) {
   const db = getDatabaseRuntime().db;
-  const [profileRows, jobTrackRows, descriptionRows, resumeRows, experienceGroupRows, experienceRows, resumeExperienceRows, assessmentRows, interviewRows, taskRows, eventRows, faqRows, faqCategoryRows, assetRows, assetLinkRows] = await Promise.all([
+  const [profileRows, jobTrackRows, descriptionRows, resumeRows, experienceGroupRows, experienceRows, resumeExperienceRows, assessmentRows, interviewRows, taskRows, eventRows, faqRows, faqCategoryRows, assetRows, assetLinkRows, occurrenceRows] = await Promise.all([
     db.select({ id: users.id, email: users.email, timezone: users.timezone, createdAt: users.createdAt }).from(users).where(eq(users.id, userId)),
     db.select().from(jobTracks).where(eq(jobTracks.userId, userId)),
     db.select({ id: jobDescriptions.id, jobTrackId: jobDescriptions.jobTrackId, textContent: jobDescriptions.textContent, createdAt: jobDescriptions.createdAt, updatedAt: jobDescriptions.updatedAt })
@@ -42,13 +43,14 @@ export async function exportUserData(userId: string) {
       .from(assets).where(eq(assets.userId, userId)),
     db.select({ id: assetLinks.id, assetId: assetLinks.assetId, ownerType: assetLinks.ownerType, ownerId: assetLinks.ownerId, sortOrder: assetLinks.sortOrder, createdAt: assetLinks.createdAt })
       .from(assetLinks).innerJoin(assets, eq(assets.id, assetLinks.assetId)).where(and(eq(assets.userId, userId))),
+    db.select({ occurrence: faqOccurrences }).from(faqOccurrences).innerJoin(faqs, eq(faqs.id, faqOccurrences.faqId)).where(eq(faqs.userId, userId)).then((rows) => rows.map((row) => row.occurrence)),
   ]);
   const profile = profileRows[0];
   if (!profile) throw new Error("NOT_FOUND: user was not found");
 
   return {
     format: "job-hunting-web-export",
-    schemaVersion: 1,
+    schemaVersion: 2,
     exportedAt: new Date().toISOString(),
     profile,
     data: {
@@ -63,6 +65,7 @@ export async function exportUserData(userId: string) {
       tasks: taskRows,
       events: eventRows,
       faqs: faqRows,
+      faqOccurrences: occurrenceRows,
       faqCategories: faqCategoryRows,
       assets: assetRows.map((asset) => ({ ...asset, downloadPath: `/api/assets/${asset.id}` })),
       assetLinks: assetLinkRows,

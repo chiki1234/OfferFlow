@@ -313,22 +313,47 @@ export const faqs = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
-    sourceInterviewId: uuid("source_interview_id").references(() => interviews.id, { onDelete: "cascade" }),
     kind: faqKind("kind").notNull(),
     question: text("question").notNull(),
     answer: text("answer").notNull(),
     experienceId: uuid("experience_id").references(() => experiences.id, { onDelete: "restrict" }),
     category: varchar("category", { length: 64 }),
-    canonicalQuestionId: uuid("canonical_question_id"),
     ...timestamps,
   },
   (table) => [
     check("faqs_experience_kind_check", sql`(${table.kind} = 'experience' AND ${table.experienceId} IS NOT NULL AND ${table.category} IS NULL) OR (${table.kind} = 'general' AND ${table.experienceId} IS NULL)`),
     index("faqs_user_kind_category_idx").on(table.userId, table.kind, table.category),
     index("faqs_experience_created_idx").on(table.experienceId, table.createdAt),
-    index("faqs_source_interview_idx").on(table.sourceInterviewId),
   ],
 );
+
+export const faqOccurrences = pgTable("faq_occurrences", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  faqId: uuid("faq_id").notNull().references(() => faqs.id, { onDelete: "cascade" }),
+  sourceInterviewId: uuid("source_interview_id").references(() => interviews.id, { onDelete: "set null" }),
+}, (table) => [
+  index("faq_occurrences_faq_idx").on(table.faqId),
+  index("faq_occurrences_interview_idx").on(table.sourceInterviewId),
+]);
+
+export const faqImportBatches = pgTable("faq_import_batches", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  idempotencyKey: varchar("idempotency_key", { length: 255 }).notNull(),
+  sourceInterviewId: uuid("source_interview_id").references(() => interviews.id, { onDelete: "set null" }),
+  status: varchar("status", { length: 24 }).notNull().default("pending"),
+  items: jsonb("items").$type<Array<{ id: string; question: string; answer: string; binding: "bound" | "unbound"; category: string | null; experienceId: string | null }>>().notNull(),
+  matches: jsonb("matches").$type<Array<{ incomingFaqId: string; existingFaqId: string | null }>>(),
+  errorMessage: text("error_message"),
+  leaseToken: uuid("lease_token"),
+  leaseExpiresAt: timestamp("lease_expires_at", { withTimezone: true }),
+  result: jsonb("result").$type<{ faqIds: string[]; importedCount: number; mergedCount: number }>(),
+  ...timestamps,
+}, (table) => [
+  uniqueIndex("faq_import_batches_user_key_unique").on(table.userId, table.idempotencyKey),
+  index("faq_import_batches_user_status_idx").on(table.userId, table.status),
+  check("faq_import_batches_status_check", sql`${table.status} IN ('pending', 'analyzing', 'review', 'failed', 'completed')`),
+]);
 
 export const faqCategories = pgTable(
   "faq_categories",

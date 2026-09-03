@@ -1,13 +1,17 @@
 import { and, asc, desc, eq, ilike, isNotNull, isNull, or, sql } from "drizzle-orm";
-import { assets, experiences, faqCategories, faqs, interviews, jobDescriptions, jobTracks, resumeExperiences, resumes, tasks } from "@/db/schema";
+import { assets, experiences, faqCategories, faqOccurrences, faqs, interviews, jobDescriptions, jobTracks, resumeExperiences, resumes, tasks } from "@/db/schema";
 import { getDatabaseRuntime } from "@/db/runtime";
 import { defaultFaqCategories, type FaqCategoryConfig } from "./faq-batch";
 import { normalizeFaqLibraryFilters } from "./faq-filters";
+import { withFaqFacts } from "./faq-facts";
 
-export async function getKnowledgeLibrary(userId: string, input: { query?: string; binding?: string; category?: string; settings?: string } = {}) {
+export async function getKnowledgeLibrary(userId: string, input: { query?: string; binding?: string; experienceId?: string; category?: string; settings?: string } = {}) {
   const db = getDatabaseRuntime().db;
-  const categoryConfig = await getFaqCategoryConfig(userId);
-  const filters = normalizeFaqLibraryFilters(input, categoryConfig);
+  const [categoryConfig, experienceOptions] = await Promise.all([
+    getFaqCategoryConfig(userId),
+    getExperienceOptions(userId),
+  ]);
+  const filters = normalizeFaqLibraryFilters(input, categoryConfig, experienceOptions.map((experience) => experience.id));
   const faqConditions = [eq(faqs.userId, userId)];
   if (filters.query) {
     const escapedQuery = filters.query.replace(/[\\%_]/g, "\\$&");
@@ -16,6 +20,7 @@ export async function getKnowledgeLibrary(userId: string, input: { query?: strin
   }
   if (filters.binding === "bound") faqConditions.push(isNotNull(faqs.experienceId));
   if (filters.binding === "unbound") faqConditions.push(isNull(faqs.experienceId));
+  if (filters.experienceId) faqConditions.push(eq(faqs.experienceId, filters.experienceId));
   if (filters.category) faqConditions.push(eq(faqs.category, filters.category));
   if (filters.settings === "complete") {
     const completeCondition = or(isNotNull(faqs.experienceId), isNotNull(faqs.category));
@@ -45,15 +50,9 @@ export async function getKnowledgeLibrary(userId: string, input: { query?: strin
       category: faqs.category,
       experienceId: faqs.experienceId,
       experienceName: experiences.name,
-      sourceInterviewId: faqs.sourceInterviewId,
-      companyName: jobTracks.companyName,
-      roleName: jobTracks.roleName,
-      roundLabel: interviews.roundLabel,
       createdAt: faqs.createdAt,
     }).from(faqs)
       .leftJoin(experiences, and(eq(experiences.id, faqs.experienceId), eq(experiences.userId, userId)))
-      .leftJoin(interviews, eq(interviews.id, faqs.sourceInterviewId))
-      .leftJoin(jobTracks, and(eq(jobTracks.id, interviews.jobTrackId), eq(jobTracks.userId, userId)))
       .where(and(...faqConditions))
       .orderBy(desc(faqs.createdAt)),
     db.select({
@@ -80,7 +79,7 @@ export async function getKnowledgeLibrary(userId: string, input: { query?: strin
     faqCategories: categoryConfig,
     totalFaqCount: faqCountRows[0]?.count ?? 0,
     experiences: experienceRows,
-    faqs: faqRows.map((row) => ({ ...row, createdAt: row.createdAt.toISOString() })),
+    faqs: await withFaqFacts(userId, faqRows.map((row) => ({ ...row, createdAt: row.createdAt.toISOString() }))),
     interviews: interviewRows.map((row) => ({ ...row, startAt: row.startAt.toISOString() })),
     resumes: resumeRows.map((resume) => ({
       ...resume,
@@ -129,13 +128,7 @@ export async function getExperienceDetail(userId: string, experienceId: string) 
       answer: faqs.answer,
       category: faqs.category,
       experienceId: faqs.experienceId,
-      companyName: jobTracks.companyName,
-      roleName: jobTracks.roleName,
-      roundLabel: interviews.roundLabel,
-      sourceInterviewId: faqs.sourceInterviewId,
     }).from(faqs)
-      .leftJoin(interviews, eq(interviews.id, faqs.sourceInterviewId))
-      .leftJoin(jobTracks, and(eq(jobTracks.id, interviews.jobTrackId), eq(jobTracks.userId, userId)))
       .where(and(eq(faqs.userId, userId), eq(faqs.experienceId, experience.id)))
       .orderBy(desc(faqs.createdAt)),
     db.select({ id: resumes.id, name: resumes.name }).from(resumeExperiences)
@@ -144,7 +137,7 @@ export async function getExperienceDetail(userId: string, experienceId: string) 
       .orderBy(desc(resumes.createdAt)),
     getFaqCategoryConfig(userId),
   ]);
-  return { experience, faqs: faqRows, resumes: resumeRows, faqCategories: categoryConfig };
+  return { experience, faqs: await withFaqFacts(userId, faqRows), resumes: resumeRows, faqCategories: categoryConfig };
 }
 
 export async function getInterviewKnowledgeDetail(userId: string, interviewId: string) {
@@ -189,7 +182,7 @@ export async function getInterviewKnowledgeDetail(userId: string, interviewId: s
       experienceName: experiences.name,
     }).from(faqs)
       .leftJoin(experiences, and(eq(experiences.id, faqs.experienceId), eq(experiences.userId, userId)))
-      .where(and(eq(faqs.userId, userId), eq(faqs.sourceInterviewId, interview.id)))
+      .where(and(eq(faqs.userId, userId), sql`EXISTS (SELECT 1 FROM ${faqOccurrences} WHERE ${faqOccurrences.faqId} = ${faqs.id} AND ${faqOccurrences.sourceInterviewId} = ${interview.id})`))
       .orderBy(desc(faqs.createdAt)),
     interview.resumeId
       ? db.select({ id: experiences.id, name: experiences.name, content: experiences.content })
@@ -218,7 +211,7 @@ export async function getInterviewKnowledgeDetail(userId: string, interviewId: s
       occurredAt: interview.occurredAt?.toISOString() ?? null,
       reviewedAt: interview.reviewedAt?.toISOString() ?? null,
     },
-    faqs: faqRows,
+    faqs: await withFaqFacts(userId, faqRows),
     faqCategories: categoryConfig,
     experiences: experienceRows,
     tasks: taskRows.map((task) => ({

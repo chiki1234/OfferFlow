@@ -6,6 +6,7 @@ describe("normalizeFaqLibraryFilters", () => {
     expect(normalizeFaqLibraryFilters({ query: "  Agent 拆分  ", binding: "unbound", category: "协作沟通" })).toEqual({
       query: "Agent 拆分",
       binding: "unbound",
+      experienceId: null,
       category: "协作沟通",
       settings: null,
     });
@@ -15,6 +16,7 @@ describe("normalizeFaqLibraryFilters", () => {
     expect(normalizeFaqLibraryFilters({ query: "a".repeat(150), binding: "unknown", category: "自定义分类" })).toEqual({
       query: "a".repeat(100),
       binding: null,
+      experienceId: null,
       category: null,
       settings: null,
     });
@@ -37,8 +39,23 @@ describe("normalizeFaqLibraryFilters", () => {
     expect(normalizeFaqLibraryFilters({ binding: "bound", category: "协作沟通" })).toEqual({
       query: "",
       binding: "bound",
+      experienceId: null,
       category: null,
       settings: null,
+    });
+  });
+
+  it("仅接受当前用户经历，并让选择经历自动收敛为已绑定筛选", () => {
+    expect(normalizeFaqLibraryFilters({ binding: "unbound", experienceId: "experience-a", category: "协作沟通" }, undefined, ["experience-a"])).toEqual({
+      query: "",
+      binding: "bound",
+      experienceId: "experience-a",
+      category: null,
+      settings: null,
+    });
+    expect(normalizeFaqLibraryFilters({ experienceId: "other-user-experience" }, undefined, ["experience-a"])).toMatchObject({
+      binding: null,
+      experienceId: null,
     });
   });
 });

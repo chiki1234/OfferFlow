@@ -10,6 +10,7 @@ import {
   StatusActionButton,
 } from "@/app/jobs/[id]/job-actions-panel";
 import { getInterviewKnowledgeDetail } from "@/modules/interview-knowledge/queries";
+import { FaqFrequency } from "@/app/faq/faq-facts";
 import { isFaqSettingsComplete } from "@/modules/interview-knowledge/faq-batch";
 import { getCurrentActor } from "@/shared/actor/current-actor";
 import { isDomainNotFoundError } from "@/shared/errors/domain-error";
@@ -64,7 +65,7 @@ export default async function InterviewDetailPage({ params }: { params: Promise<
           <div className="faq-card-list">{view.faqs.map((faq) => {
             const settingsComplete = isFaqSettingsComplete(faq);
             const settingLabel = faq.experienceId ? faq.experienceName ?? "已绑定经历" : faq.category ?? "暂不设置";
-            return <article className="faq-card" key={faq.id}><div className={settingsComplete ? "faq-card-meta" : "faq-card-meta incomplete"}><span>{settingLabel}</span></div><h3>{faq.question}</h3><p>{faq.answer || "暂未记录答案"}</p><FaqEditor faq={faq} experiences={view.experiences} faqCategories={view.faqCategories} incomplete={!settingsComplete} /></article>;
+            return <article className="faq-card" key={faq.id}><div className={settingsComplete ? "faq-card-meta" : "faq-card-meta incomplete"}><span>{settingLabel}</span><FaqFrequency count={faq.frequency} /></div><h3>{faq.question}</h3><p>{faq.answer || "暂未记录答案"}</p><FaqEditor faq={faq} experiences={view.experiences} faqCategories={view.faqCategories} incomplete={!settingsComplete} /></article>;
           })}{!view.faqs.length && <p className="detail-note">面试后把整理好的 FAQ Blocks 粘贴到右侧。</p>}</div>
         </section>
       </div>

@@ -1,12 +1,16 @@
 "use client";
 
-import { useActionState, useCallback, useEffect, useMemo, useState } from "react";
+import { useActionState, useCallback, useEffect, useId, useMemo, useRef, useState, useTransition } from "react";
 import { useFormStatus } from "react-dom";
+import { useRouter } from "next/navigation";
 import { AlertCircle, Pencil, Plus, Settings2, Trash2 } from "lucide-react";
 import { OperationModal } from "@/components/operation-modal";
-import type { FaqBinding, FaqCategoryConfig } from "@/modules/interview-knowledge/faq-batch";
+import type { FaqBatchItem, FaqBinding, FaqCategoryConfig } from "@/modules/interview-knowledge/faq-batch";
 import { parseFaqBlocks } from "@/modules/interview-knowledge/faq-parser";
 import { commitFaqBatchAction, createExperienceAction, createFaqCategoryAction, deleteFaqAction, deleteFaqCategoryAction, renameFaqCategoryAction, setResumeExperiencesAction, updateExperienceAction, updateFaqAction, type KnowledgeActionState } from "./actions";
+import { beginFaqAnalysis, importEditedFaqBatch } from "./import-actions";
+import { FaqImportProgress, FaqTaskDialog } from "./import-progress";
+import { withFaqRequestTimeout } from "./import-request";
 
 const initialState: KnowledgeActionState = { error: null, success: null };
 
@@ -21,16 +25,42 @@ export function ExperienceEditor({ experience }: { experience: { id: string; nam
   return <details className="context-editor"><summary>编辑经历内容</summary><form action={action} className="create-form"><input type="hidden" name="experienceId" value={experience.id} /><label>经历名称<input name="name" defaultValue={experience.name} required /></label><label>经历内容<textarea name="content" rows={12} defaultValue={experience.content} required /></label><Feedback state={state} /><Submit label="保存经历" /></form></details>;
 }
 
-export function FaqBatchForm({ token, interviews, experiences, faqCategories, onSuccess }: { token: string; interviews: Array<{ id: string; companyName: string; roleName: string; roundLabel: string }>; experiences: Array<{ id: string; name: string }>; faqCategories: FaqCategoryConfig; onSuccess?: () => void }) {
-  const [state, action] = useActionState(commitFaqBatchAction, initialState);
-  const [raw, setRaw] = useState("");
-  const [drafts, setDrafts] = useState<FaqDraft[]>([]);
+export type FaqImportEditDraft = { batchId: string; items: FaqBatchItem[]; sourceInterviewId: string | null };
+
+export function FaqBatchForm({ token, interviews, experiences, faqCategories, onSuccess, initialDraft }: { token: string; interviews: Array<{ id: string; companyName: string; roleName: string; roundLabel: string }>; experiences: Array<{ id: string; name: string }>; faqCategories: FaqCategoryConfig; onSuccess?: () => void; initialDraft?: FaqImportEditDraft }) {
+  const router = useRouter();
+  const [state, action, pending] = useActionState(commitFaqBatchAction, initialState);
+  const formRef = useRef<HTMLFormElement>(null);
+  const [interviewId, setInterviewId] = useState(initialDraft?.sourceInterviewId ?? "");
+  const [validationAttempt, setValidationAttempt] = useState(0);
+  const selectionErrorId = useId();
+  const editedSubmission = useRef<{ payload: string; key: string } | null>(null);
+  const [choiceOpen, setChoiceOpen] = useState(false);
+  const [analysisId, setAnalysisId] = useState<string | null>(null);
+  const [analysisError, setAnalysisError] = useState<string | null>(null);
+  const [editingBatchId, setEditingBatchId] = useState<string | null>(initialDraft?.batchId ?? null);
+  const [importKey, setImportKey] = useState(token);
+  const [starting, startTransition] = useTransition();
+  const [raw, setRaw] = useState(() => initialDraft?.items.map((item) => `Q: ${item.question}\nA: ${item.answer}`).join("\n\n---\n\n") ?? "");
+  const [drafts, setDrafts] = useState<FaqDraft[]>(() => initialDraft?.items.map((item, index) => ({
+    ...item, key: `restored-${index}`, index: index + 1, selected: true, category: item.category ?? "", experienceId: item.experienceId ?? "",
+  })) ?? []);
   const parsed = useMemo(() => raw.trim() ? parseFaqBlocks(raw) : [], [raw]);
   const selectedDrafts = drafts.filter((draft) => draft.selected);
-  const canSubmit = selectedDrafts.length > 0 && selectedDrafts.every((draft) =>
+  const sourceMissing = !interviews.some((interview) => interview.id === interviewId);
+  const rawError = !raw.trim() ? "请填写 FAQ 内容。" : !drafts.length ? "请至少填写一个包含问题的 Q: Block。" : null;
+  const canSubmit = Boolean(!sourceMissing && !rawError && selectedDrafts.length > 0 && selectedDrafts.every((draft) =>
     draft.question.trim() && draft.binding && (draft.binding === "unbound" || draft.experienceId),
-  );
+  ));
+  const showValidation = validationAttempt > 0;
   useEffect(() => { if (state.success) onSuccess?.(); }, [onSuccess, state.success]);
+  useEffect(() => {
+    if (!validationAttempt) return;
+    const firstInvalid = formRef.current?.querySelector<HTMLElement>('[aria-invalid="true"], [data-invalid="true"]');
+    if (!firstInvalid) return;
+    firstInvalid.focus({ preventScroll: true });
+    firstInvalid.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth", block: "center" });
+  }, [validationAttempt]);
 
   function handleRawChange(value: string) {
     setRaw(value);
@@ -50,18 +80,81 @@ export function FaqBatchForm({ token, interviews, experiences, faqCategories, on
     setDrafts((current) => current.map((draft) => draft.key === key ? { ...draft, ...update } : draft));
   }
 
-  return <form action={action} className="create-form knowledge-form faq-import-form"><input type="hidden" name="idempotencyKey" value={token} /><input type="hidden" name="itemsJson" value={JSON.stringify(selectedDrafts.map(({ question, answer, binding, category, experienceId }) => ({ question, answer, binding, category: binding === "unbound" ? category || null : null, experienceId: binding === "bound" ? experienceId || null : null })))} /><h3>批量导入 FAQ</h3>
-    <label>来源面试（可选）<select name="interviewId"><option value="">不关联面试</option>{interviews.map((item) => <option key={item.id} value={item.id}>{item.companyName} · {item.roleName} · {item.roundLabel}</option>)}</select></label>
-    <label>FAQ Blocks<textarea rows={10} value={raw} onChange={(event) => handleRawChange(event.target.value)} placeholder={"### Q：为什么这样设计？\nA：因为…\n\n---\n\nQ: 还遇到了什么挑战？"} required /></label>
+  const handleAnalysisImported = useCallback(() => {
+    editedSubmission.current = null;
+    setAnalysisId(null);
+    setRaw("");
+    setDrafts([]);
+    setInterviewId("");
+    setValidationAttempt(0);
+    setEditingBatchId(null);
+    onSuccess?.();
+  }, [onSuccess]);
+
+  const handleReturnToEdit = useCallback(() => {
+    editedSubmission.current = null;
+    setEditingBatchId(analysisId);
+    setAnalysisId(null);
+    setAnalysisError(null);
+    setImportKey(globalThis.crypto.randomUUID());
+  }, [analysisId]);
+
+  function chooseImport(useAi: boolean) {
+    if (!formRef.current) return;
+    const data = new FormData(formRef.current);
+    if (editingBatchId) {
+      const payload = JSON.stringify([data.get("itemsJson"), data.get("interviewId"), useAi]);
+      if (editedSubmission.current?.payload !== payload) editedSubmission.current = { payload, key: globalThis.crypto.randomUUID() };
+      data.set("idempotencyKey", editedSubmission.current.key);
+    }
+    startTransition(async () => {
+      try {
+        if (!useAi) {
+          if (!editingBatchId) { action(data); setChoiceOpen(false); return; }
+          const imported = await withFaqRequestTimeout(() => importEditedFaqBatch(data));
+          if (imported.error) setAnalysisError(imported.error);
+          else {
+            setChoiceOpen(false);
+            handleAnalysisImported();
+            router.replace(`/faq?imported=${imported.result?.importedCount ?? 0}&merged=0`);
+            router.refresh();
+          }
+          return;
+        }
+        const result = await withFaqRequestTimeout(() => beginFaqAnalysis(data));
+        if (result.error) setAnalysisError(result.error);
+        else { setChoiceOpen(false); setAnalysisId(result.batchId); }
+      } catch { setAnalysisError("暂时无法开始分析，请检查连接后重试。已填写的内容仍保留在当前页面。"); }
+    });
+  }
+
+  return <><form action={action} ref={formRef} noValidate onSubmit={(event) => { event.preventDefault(); setValidationAttempt((attempt) => attempt + 1); if (canSubmit && !starting && !pending) { setAnalysisError(null); setChoiceOpen(true); } }} className="create-form knowledge-form faq-import-form"><input type="hidden" name="idempotencyKey" value={importKey} />{editingBatchId && <input type="hidden" name="replaceBatchId" value={editingBatchId} />}<input type="hidden" name="itemsJson" value={JSON.stringify(selectedDrafts.map(({ question, answer, binding, category, experienceId }) => ({ question, answer, binding, category: binding === "unbound" ? category || null : null, experienceId: binding === "bound" ? experienceId || null : null })))} /><h3>批量导入 FAQ</h3>
+    <label>来源面试（必填）<select name="interviewId" required value={sourceMissing ? "" : interviewId} aria-invalid={showValidation && sourceMissing} onChange={(event) => setInterviewId(event.target.value)}><option value="">请选择来源面试</option>{interviews.map((item) => <option key={item.id} value={item.id}>{item.companyName} · {item.roleName} · {item.roundLabel}</option>)}</select>{showValidation && sourceMissing && <span className="faq-field-error">请选择来源面试。</span>}</label>
+    {!interviews.length && <p className="form-hint">暂无可选面试，请先创建面试，再导入 FAQ。</p>}
+    <label>FAQ Blocks（必填）<textarea rows={10} value={raw} aria-invalid={showValidation && Boolean(rawError)} onChange={(event) => handleRawChange(event.target.value)} placeholder={"### Q：为什么这样设计？\nA：因为…\n\n---\n\nQ: 还遇到了什么挑战？"} required />{showValidation && rawError && <span className="faq-field-error">{rawError}</span>}</label>
     {parsed.length > 0 && <div className="parse-summary"><strong>{parsed.filter((item) => item.status === "valid").length} 条可导入</strong>{parsed.some((item) => item.status === "invalid") && <span>{parsed.filter((item) => item.status === "invalid").length} 个 Block 需修正，本次会跳过</span>}</div>}
     {drafts.length > 0 && <>
-      <div className="faq-selection-row"><strong>逐条确认（已选 {selectedDrafts.length}/{drafts.length}）</strong><div><button type="button" onClick={() => setDrafts((current) => current.map((draft) => ({ ...draft, selected: true })))}>全选</button><button type="button" onClick={() => setDrafts((current) => current.map((draft) => ({ ...draft, selected: false })))}>清空</button></div></div>
+      <div className="faq-selection-row" role="group" aria-label="选择要导入的 FAQ" aria-describedby={showValidation && !selectedDrafts.length ? selectionErrorId : undefined} data-invalid={showValidation && !selectedDrafts.length} tabIndex={-1}><strong>逐条确认（已选 {selectedDrafts.length}/{drafts.length}）</strong><div><button type="button" onClick={() => setDrafts((current) => current.map((draft) => ({ ...draft, selected: true })))}>全选</button><button type="button" onClick={() => setDrafts((current) => current.map((draft) => ({ ...draft, selected: false })))}>清空</button></div></div>
+      {showValidation && !selectedDrafts.length && <p className="faq-field-error" id={selectionErrorId}>请至少选择一条 FAQ。</p>}
       <p className="form-hint">每条 FAQ 都必须确认是否绑定经历；未绑定经历时，分类可以稍后补充。</p>
-      <div className="faq-draft-list">{drafts.map((draft) => <article className={draft.selected ? "faq-draft selected" : "faq-draft"} key={draft.key}><label className="faq-draft-check"><input type="checkbox" checked={draft.selected} onChange={(event) => updateDraft(draft.key, { selected: event.target.checked })} /><span>FAQ {draft.index + 1}</span></label><label>问题<textarea rows={2} value={draft.question} onChange={(event) => updateDraft(draft.key, { question: event.target.value })} /></label><label>答案<textarea rows={4} value={draft.answer} onChange={(event) => updateDraft(draft.key, { answer: event.target.value })} /></label><div className="faq-draft-meta"><label>是否绑定经历（必填）<select value={draft.binding} onChange={(event) => { const binding = event.target.value as FaqDraft["binding"]; updateDraft(draft.key, { binding, category: "", experienceId: "" }); }}><option value="">请选择</option><option value="bound">是</option><option value="unbound">否</option></select></label>{draft.binding === "bound" && <label>对应经历（必填）<select value={draft.experienceId} onChange={(event) => updateDraft(draft.key, { experienceId: event.target.value })}><option value="">{experiences.length ? "请选择经历" : "暂无经历，请先新增经历"}</option>{experiences.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>}{draft.binding === "unbound" && <label>分类（可选）<select value={draft.category} onChange={(event) => updateDraft(draft.key, { category: event.target.value })}><option value="">暂不设置</option>{faqCategories.map((category) => <option key={category} value={category}>{category}</option>)}</select></label>}</div></article>)}</div>
+      <div className="faq-draft-list">{drafts.map((draft) => {
+        const validateDraft = showValidation && draft.selected;
+        return <article className={draft.selected ? "faq-draft selected" : "faq-draft"} key={draft.key}>
+          <label className="faq-draft-check"><input type="checkbox" checked={draft.selected} onChange={(event) => updateDraft(draft.key, { selected: event.target.checked })} /><span>FAQ {draft.index + 1}</span></label>
+          <label>问题（必填）<textarea rows={2} value={draft.question} required={draft.selected} aria-invalid={validateDraft && !draft.question.trim()} onChange={(event) => updateDraft(draft.key, { question: event.target.value })} />{validateDraft && !draft.question.trim() && <span className="faq-field-error">请填写问题。</span>}</label>
+          <label>答案（可选）<textarea rows={4} value={draft.answer} onChange={(event) => updateDraft(draft.key, { answer: event.target.value })} /></label>
+          <div className="faq-draft-meta">
+            <label>是否绑定经历（必填）<select value={draft.binding} required={draft.selected} aria-invalid={validateDraft && !draft.binding} onChange={(event) => { const binding = event.target.value as FaqDraft["binding"]; updateDraft(draft.key, { binding, category: "", experienceId: "" }); }}><option value="">请选择</option><option value="bound">是</option><option value="unbound">否</option></select>{validateDraft && !draft.binding && <span className="faq-field-error">请选择是否绑定经历。</span>}</label>
+            {draft.binding === "bound" && <label>对应经历（必填）<select value={draft.experienceId} required={draft.selected} aria-invalid={validateDraft && !draft.experienceId} onChange={(event) => updateDraft(draft.key, { experienceId: event.target.value })}><option value="">{experiences.length ? "请选择经历" : "暂无经历，请先新增经历"}</option>{experiences.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select>{validateDraft && !draft.experienceId && <span className="faq-field-error">请选择对应经历。</span>}</label>}
+            {draft.binding === "unbound" && <label>分类（可选）<select value={draft.category} onChange={(event) => updateDraft(draft.key, { category: event.target.value })}><option value="">暂不设置</option>{faqCategories.map((category) => <option key={category} value={category}>{category}</option>)}</select></label>}
+          </div>
+        </article>;
+      })}</div>
     </>}
     {parsed.filter((block) => block.status === "invalid").map((block) => <div className="faq-invalid-block" key={`invalid-${block.index}`}><strong>FAQ {block.index + 1}：{block.error}</strong><pre>{block.raw}</pre></div>)}
-    <Feedback state={state} /><Submit disabled={!canSubmit} label={selectedDrafts.length ? `导入 ${selectedDrafts.length} 条 FAQ` : "选择要导入的 FAQ"} />
-  </form>;
+    {showValidation && !canSubmit && <p className="form-error" role="alert">请补齐标红的必填项，并至少选择一条 FAQ 后再导入。</p>}
+    <Feedback state={state} /><button className="primary-button wide" type="submit" aria-busy={starting || pending}>{starting || pending ? "处理中…" : selectedDrafts.length ? `导入 ${selectedDrafts.length} 条 FAQ` : "导入 FAQ"}</button>
+  </form>{choiceOpen && <FaqTaskDialog title="先检查重复 FAQ？"><p>AI 帮你找出相似问题，避免重复导入。</p>{analysisError && <p className="form-error">{analysisError}</p>}<div className="faq-task-actions"><button className="primary-button" disabled={starting} onClick={() => chooseImport(true)} type="button">{starting ? "准备中…" : "使用 AI 分析"}</button><button className="secondary-button" disabled={starting} onClick={() => chooseImport(false)} type="button">不分析，直接导入</button><button className="faq-text-button" disabled={starting} onClick={() => setChoiceOpen(false)} type="button">返回编辑</button></div></FaqTaskDialog>}{analysisId && <FaqImportProgress batchId={analysisId} onImported={handleAnalysisImported} onReturnToEdit={handleReturnToEdit} />}</>;
 }
 
 type FaqDraft = {

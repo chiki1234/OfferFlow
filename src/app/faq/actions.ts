@@ -55,7 +55,7 @@ export async function deleteExperienceAction(_state: KnowledgeActionState, formD
 export async function commitFaqBatchAction(_state: KnowledgeActionState, formData: FormData): Promise<KnowledgeActionState> {
   try {
     const data = z.object({
-      idempotencyKey: z.string().min(8), interviewId: z.union([z.uuid(), z.literal("")]), itemsJson: z.string().min(2).max(1_000_000),
+      idempotencyKey: z.string().min(8), interviewId: z.uuid(), itemsJson: z.string().min(2).max(1_000_000),
     }).parse({
       idempotencyKey: formData.get("idempotencyKey"), interviewId: formData.get("interviewId"), itemsJson: formData.get("itemsJson"),
     });
@@ -69,7 +69,7 @@ export async function commitFaqBatchAction(_state: KnowledgeActionState, formDat
     await commitFaqBatch({
       userId: (await getCurrentActor()).userId,
       idempotencyKey: data.idempotencyKey,
-      interviewId: data.interviewId || null,
+      interviewId: data.interviewId,
       committedAt: new Date().toISOString(),
       items,
     });
