@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { config } from "dotenv";
-import { inArray } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { getDatabaseRuntime } from "../src/db/runtime";
-import { faqs, interviews, jobTracks, users } from "../src/db/schema";
+import { faqOccurrences, faqs, interviews, jobTracks, users } from "../src/db/schema";
 import { commitFaqBatch, createExperience, updateFaq } from "../src/modules/interview-knowledge/service";
 import { createFaqImportBatch, executeFaqImportAnalysis, finalizeFaqImportBatch, generateFaqImportAnswer, getFaqImportReview, retryFaqImportAnalysis } from "../src/modules/interview-knowledge/faq-import";
 import { getExperienceDetail, getInterviewKnowledgeDetail, getKnowledgeLibrary } from "../src/modules/interview-knowledge/queries";
@@ -170,6 +170,47 @@ try {
   }
   assert.equal(activeCalls, 1);
   assert.equal((await getFaqImportReview(userId, activeFallback.batchId)).status, "completed", "运行中的旧请求不能改变已完成导入");
+
+  const groupedInput = { userId, idempotencyKey: randomUUID(), interviewId: null, committedAt: new Date().toISOString(), items: [
+    { groupId: "first", sourceInterviewId: firstInterview, question: "分组事务问题一", answer: "", binding: "bound" as const, category: null, experienceId: experience.id },
+    { groupId: "second", sourceInterviewId: secondInterview, question: "分组事务问题二", answer: "", binding: "unbound" as const, category: null, experienceId: null },
+    { groupId: "none", sourceInterviewId: null, question: "分组事务无来源", answer: "", binding: "unbound" as const, category: null, experienceId: null },
+  ] };
+  const [groupedDirect, repeatedDirect] = await Promise.all([commitFaqBatch(groupedInput), commitFaqBatch(groupedInput)]);
+  assert.deepEqual(groupedDirect, repeatedDirect, "分组直接保存的并发重试不能重复录入");
+  const directOccurrences = await db.select().from(faqOccurrences).where(inArray(faqOccurrences.faqId, groupedDirect.faqIds));
+  assert.equal(directOccurrences.length, 3);
+  groupedDirect.faqIds.forEach((id, index) => assert.equal(directOccurrences.find((row) => row.faqId === id)?.sourceInterviewId, groupedInput.items[index].sourceInterviewId));
+
+  const foreignJob = randomUUID();
+  const foreignInterview = randomUUID();
+  await db.insert(jobTracks).values({ id: foreignJob, userId: otherUserId, companyName: "隔离测试", roleName: "测试" });
+  await db.insert(interviews).values({ id: foreignInterview, jobTrackId: foreignJob, roundLabel: "测试面试", interviewType: "技术面", startAt: new Date(), endAt: new Date(Date.now() + 3600000) });
+  const countBeforeRejected = (await getKnowledgeLibrary(userId)).totalFaqCount;
+  const foreignItems = [groupedInput.items[0], { ...groupedInput.items[1], sourceInterviewId: foreignInterview }];
+  await assert.rejects(commitFaqBatch({ ...groupedInput, idempotencyKey: randomUUID(), items: foreignItems }), /NOT_FOUND/);
+  await assert.rejects(createFaqImportBatch({ ...groupedInput, idempotencyKey: randomUUID(), items: foreignItems }), /VALIDATION_ERROR/);
+  assert.equal((await getKnowledgeLibrary(userId)).totalFaqCount, countBeforeRejected, "任一组越权时整批不得部分保存");
+
+  const groupedTarget = groupedDirect.faqIds[0];
+  const groupedBatch = await createFaqImportBatch({ userId, idempotencyKey: randomUUID(), interviewId: null, items: [
+    ...[firstInterview, secondInterview, null].map((sourceInterviewId, index) => ({ groupId: `merge-${index}`, sourceInterviewId, question: `合并组 ${index}`, answer: "", binding: "bound" as const, category: null, experienceId: experience.id })),
+    { groupId: "new", sourceInterviewId: secondInterview, question: "分组新增问题", answer: "", binding: "unbound", category: null, experienceId: null },
+  ] });
+  const stagedGroups = await getFaqImportReview(userId, groupedBatch.batchId);
+  assert.deepEqual(stagedGroups.items.map((item) => item.groupId), ["merge-0", "merge-1", "merge-2", "new"]);
+  assert.deepEqual(stagedGroups.items.map((item) => item.sourceInterviewId), [firstInterview, secondInterview, null, secondInterview]);
+  await executeFaqImportAnalysis(userId, groupedBatch.batchId, { ...gateway, async findClosestMatches(request) { return request.incoming.map((item) => ({ incomingFaqId: item.id, existingFaqId: request.candidates.some((candidate) => candidate.id === groupedTarget) ? groupedTarget : null })); } });
+  const groupedReview = await getFaqImportReview(userId, groupedBatch.batchId);
+  const groupedResult = await finalizeFaqImportBatch({ userId, batchId: groupedBatch.batchId, decision: { newItemIds: [groupedReview.items[3].id], merges: [{ targetFaqId: groupedTarget, itemIds: groupedReview.items.slice(0, 3).map((item) => item.id), answer: "分组最终答案", expectedUpdatedAt: groupedReview.targets[0].updatedAt }] } });
+  assert.equal(groupedResult.mergedCount, 3);
+  assert.equal(groupedResult.importedCount, 1);
+  const mergedOccurrences = await db.select().from(faqOccurrences).where(eq(faqOccurrences.faqId, groupedTarget));
+  assert.equal(mergedOccurrences.length, 4);
+  assert.equal(mergedOccurrences.filter((row) => row.sourceInterviewId === null).length, 1);
+  assert.equal(mergedOccurrences.filter((row) => row.sourceInterviewId === secondInterview).length, 1);
+  const newlyCreatedId = groupedResult.faqIds.find((id) => id !== groupedTarget)!;
+  assert.equal((await db.select().from(faqOccurrences).where(eq(faqOccurrences.faqId, newlyCreatedId)))[0].sourceInterviewId, secondInterview);
 
   const conflict = await createFaqImportBatch({ userId, idempotencyKey: randomUUID(), interviewId: null, items: [{ question: "缓存如何实现？", answer: "", binding: "bound", category: null, experienceId: experience.id }] });
   await executeFaqImportAnalysis(userId, conflict.batchId, gateway);

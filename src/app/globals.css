@@ -704,6 +704,56 @@ a {
 .knowledge-tab-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-top: 22px; border-bottom: 1px solid var(--line); padding-bottom: 12px; }
 .knowledge-tab-toolbar .tab-list { min-width: 0; max-width: 100%; }
 .knowledge-tab-toolbar .tab-list a { flex-shrink: 0; white-space: nowrap; }
+.knowledge-create-actions { display: flex; align-items: center; gap: 9px; flex-shrink: 0; }
+.knowledge-create-actions > button { white-space: nowrap; }
+
+.faq-entry-form { gap: 18px; }
+.faq-entry-groups { display: grid; gap: 24px; min-width: 0; padding: 0; margin: 0; border: 0; }
+.faq-entry-group { border: 1px solid #ccd9d0; border-radius: 14px; background: #fff; overflow: hidden; }
+.faq-group-settings { padding: 18px; background: #f0f5f1; border-bottom: 1px solid #dce5df; }
+.faq-group-heading, .faq-group-heading > div, .faq-group-tools, .faq-entry-card-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.faq-group-heading { margin-bottom: 16px; }
+.faq-group-heading h3 { display: flex; align-items: center; gap: 9px; margin: 0; font-size: 14px; font-weight: 750; }
+.faq-group-heading h3 > span { display: grid; place-items: center; width: 27px; height: 27px; border-radius: 7px; background: var(--brand-dark); color: white; font-size: 11px; }
+.faq-entry-count { font-size: 11px; color: var(--muted); }
+.faq-group-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.faq-group-source { grid-column: 1 / -1; }
+.faq-entry-form label { position: relative; font-size: 12px; font-weight: 650; }
+.faq-entry-form select, .faq-entry-form textarea { min-width: 0; width: 100%; background: #fff; font-size: 13px; font-weight: 400; }
+.faq-entry-form textarea { resize: vertical; line-height: 1.65; }
+.faq-entry-form select { text-overflow: ellipsis; }
+.faq-entry-form .faq-optional { position: absolute; right: 0; top: 0; color: var(--muted); font-size: 10px; font-weight: 400; }
+.faq-group-content { display: grid; gap: 14px; padding: 16px 18px 18px; }
+.faq-entry-form .faq-select-all, .faq-entry-card-heading > label { display: flex; align-items: center; gap: 7px; }
+.faq-entry-form input[type="checkbox"] { width: 15px; height: 15px; margin: 0; accent-color: var(--brand); }
+.faq-entry-form .faq-select-all { color: var(--muted); font-size: 11px; }
+.faq-entry-cards { display: grid; gap: 14px; }
+.faq-entry-card { display: grid; gap: 12px; border: 1px solid var(--line); border-radius: 10px; padding: 14px; background: #fff; }
+.faq-entry-card.unselected { background: #f7f8f7; opacity: .65; }
+.faq-entry-card-heading > label { color: var(--brand-dark); }
+.faq-entry-remove { display: grid; place-items: center; width: 30px; height: 30px; border: 1px solid transparent; border-radius: 7px; background: transparent; color: #7a8580; cursor: pointer; }
+.faq-entry-remove:hover { border-color: #ead0ca; color: #a23d2c; background: #fff3f0; }
+.faq-add-card, .faq-add-group { display: flex; justify-content: center; align-items: center; gap: 8px; width: 100%; min-height: 43px; border-radius: 9px; font-size: 13px; font-weight: 700; cursor: pointer; transition: background .15s; }
+.faq-add-card { border: 1px solid #a9c3b0; background: #edf5ef; color: var(--brand-dark); }
+.faq-add-card:hover { background: #e0eee4; }
+.faq-add-group { border: 1.5px dashed #7d9b87; background: #fff; color: var(--brand-dark); min-height: 48px; }
+.faq-add-group:hover { background: #edf5ef; border-style: solid; }
+.faq-entry-form button:disabled { opacity: .5; cursor: not-allowed; }
+.faq-paste-panel { display: grid; gap: 12px; padding: 14px; border: 1px solid #c7d9ce; border-radius: 10px; background: #f6faf7; }
+.faq-paste-panel > button { justify-self: end; }
+.faq-entry-footer { display: flex; justify-content: space-between; align-items: center; gap: 14px; position: sticky; bottom: -24px; padding: 16px 0; background: var(--surface); border-top: 1px solid var(--line); z-index: 1; }
+.faq-entry-footer > div { color: var(--muted); font-size: 12px; }
+.faq-entry-footer strong { color: var(--brand-dark); }
+.faq-entry-footer > .primary-button { min-height: 44px; }
+@media (max-width: 600px) {
+  .knowledge-create-actions > button { flex: 1; justify-content: center; }
+  .faq-group-settings { padding: 14px; }
+  .faq-group-content { padding: 12px; }
+  .faq-entry-card { padding: 12px; }
+  .faq-group-fields { gap: 12px; }
+  .faq-entry-footer { flex-wrap: wrap; bottom: -18px; }
+  .faq-entry-footer > .primary-button { flex: 1; justify-content: center; }
+}
 .knowledge-layout { display: block; margin-top: 22px; }
 .knowledge-main { min-width: 0; }
 .knowledge-main > .section-title-row { padding: 8px 2px 0; }

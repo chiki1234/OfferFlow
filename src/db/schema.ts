@@ -342,7 +342,7 @@ export const faqImportBatches = pgTable("faq_import_batches", {
   idempotencyKey: varchar("idempotency_key", { length: 255 }).notNull(),
   sourceInterviewId: uuid("source_interview_id").references(() => interviews.id, { onDelete: "set null" }),
   status: varchar("status", { length: 24 }).notNull().default("pending"),
-  items: jsonb("items").$type<Array<{ id: string; question: string; answer: string; binding: "bound" | "unbound"; category: string | null; experienceId: string | null }>>().notNull(),
+  items: jsonb("items").$type<Array<{ id: string; question: string; answer: string; binding: "bound" | "unbound"; category: string | null; experienceId: string | null; groupId?: string; sourceInterviewId?: string | null }>>().notNull(),
   matches: jsonb("matches").$type<Array<{ incomingFaqId: string; existingFaqId: string | null }>>(),
   errorMessage: text("error_message"),
   leaseToken: uuid("lease_token"),

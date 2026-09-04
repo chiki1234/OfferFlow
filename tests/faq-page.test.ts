@@ -7,7 +7,7 @@ const { getKnowledgeLibrary, getCurrentActor } = vi.hoisted(() => ({ getKnowledg
 vi.mock("@/modules/interview-knowledge/queries", () => ({ getKnowledgeLibrary }));
 vi.mock("@/shared/actor/current-actor", () => ({ getCurrentActor }));
 vi.mock("@/modules/interview-knowledge/faq-import", () => ({ getActiveFaqImportBatch: async () => null }));
-vi.mock("@/app/faq/knowledge-actions", () => ({ DeleteExperienceButton: () => null, KnowledgeCreateButton: () => null, ManageResumeExperienceButton: () => null }));
+vi.mock("@/app/faq/knowledge-actions", () => ({ DeleteExperienceButton: () => null, FaqCreateButton: () => null, ExperienceCreateButton: () => null, ManageResumeExperienceButton: () => null }));
 vi.mock("@/app/faq/knowledge-forms", () => ({ FaqEditor: () => null }));
 
 describe("知识库综合问题视图", () => {

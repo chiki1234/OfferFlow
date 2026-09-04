@@ -203,8 +203,8 @@ export function FaqImportReview({ review }: { review: Review }) {
   </main>;
 }
 
-function QuestionMeta({ item, frequency, existing = false }: { item: { experienceName: string | null; category: string | null }; frequency: number; existing?: boolean }) {
-  return <div className={styles.questionMeta}><span><Tag size={15} />{item.experienceName ? `经历：${item.experienceName}` : `类别：${item.category ?? "未分类"}`}</span><span>{existing ? "已出现" : "本次"} <strong>{frequency}</strong> 次</span></div>;
+function QuestionMeta({ item, frequency, existing = false }: { item: { experienceName: string | null; category: string | null; sourceInterviewLabel?: string }; frequency: number; existing?: boolean }) {
+  return <div className={styles.questionMeta}><span><Tag size={15} />{item.experienceName ? `经历：${item.experienceName}` : `类别：${item.category ?? "未分类"}`}</span><span>{existing ? "已出现" : "本次"} <strong>{frequency}</strong> 次</span>{!existing && item.sourceInterviewLabel && <span>{item.sourceInterviewLabel}</span>}</div>;
 }
 
 function AnswerPreview({ answer }: { answer: string }) {

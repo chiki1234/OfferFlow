@@ -2,240 +2,105 @@
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { FaqBatchForm } from "../src/app/faq/knowledge-forms";
+import { FaqEntryForm } from "../src/app/faq/faq-entry-form";
 
 const { commit, beginAnalysis, importEdited } = vi.hoisted(() => ({ commit: vi.fn(), beginAnalysis: vi.fn(), importEdited: vi.fn() }));
-vi.mock("next/navigation", () => ({ useRouter: () => ({ replace: vi.fn(), refresh: vi.fn() }) }));
-vi.mock("../src/app/faq/actions", () => ({
-  commitFaqBatchAction: commit, createExperienceAction: vi.fn(), createFaqCategoryAction: vi.fn(),
-  deleteFaqAction: vi.fn(), deleteFaqCategoryAction: vi.fn(), renameFaqCategoryAction: vi.fn(),
-  setResumeExperiencesAction: vi.fn(), updateExperienceAction: vi.fn(), updateFaqAction: vi.fn(),
-}));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
+vi.mock("../src/app/faq/actions", () => ({ commitFaqBatchAction: commit }));
 vi.mock("../src/app/faq/import-actions", () => ({ beginFaqAnalysis: beginAnalysis, importEditedFaqBatch: importEdited }));
-
 let root: Root;
 let container: HTMLDivElement;
-const scrollIntoView = vi.fn();
-const props = {
-  token: "test-import-token",
-  interviews: [{ id: "interview-1", companyName: "测试公司", roleName: "测试岗位", roundLabel: "一面" }],
-  experiences: [{ id: "experience-1", name: "测试经历" }],
-  faqCategories: ["协作沟通"],
-};
-
+const props = { token: "test-import-token", interviews: [{ id: "interview-1", companyName: "公司", roleName: "岗位", roundLabel: "一面" }], experiences: [{ id: "experience-1", name: "项目 A" }], faqCategories: ["协作沟通"] };
 beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: false })));
-  Element.prototype.scrollIntoView = scrollIntoView;
+  Element.prototype.scrollIntoView = vi.fn();
   HTMLDialogElement.prototype.showModal = function () { this.open = true; };
   HTMLDialogElement.prototype.close = function () { this.open = false; };
-  container = document.createElement("div");
-  document.body.append(container);
-  root = createRoot(container);
-  commit.mockResolvedValue({ error: null, success: "已导入 1 条 FAQ。" });
+  container = document.createElement("div"); document.body.append(container); root = createRoot(container);
+  commit.mockResolvedValue({ error: null, success: "已保存。" });
 });
-
-afterEach(async () => {
-  await act(async () => { root.unmount(); });
-  container.remove();
-  vi.unstubAllGlobals();
-});
-
-async function renderForm(overrides: Partial<Parameters<typeof FaqBatchForm>[0]> = {}) {
-  await act(async () => { root.render(createElement(FaqBatchForm, { ...props, ...overrides })); });
+afterEach(async () => { await act(async () => root.unmount()); container.remove(); vi.unstubAllGlobals(); });
+async function render(overrides: Partial<Parameters<typeof FaqEntryForm>[0]> = {}) { await act(async () => root.render(createElement(FaqEntryForm, { ...props, ...overrides }))); }
+const groups = () => Array.from(container.querySelectorAll<HTMLElement>(".faq-entry-group"));
+const cards = (index = 0) => Array.from(groups()[index].querySelectorAll<HTMLElement>(".faq-entry-card"));
+const source = (index = 0) => groups()[index].querySelector<HTMLSelectElement>("select[name=interviewId]")!;
+const binding = (index = 0) => groups()[index].querySelectorAll<HTMLSelectElement>("select")[1];
+const question = (group = 0, card = 0) => cards(group)[card].querySelector("textarea")!;
+const invalid = () => Array.from(container.querySelectorAll('[aria-invalid="true"], [data-invalid="true"]'));
+const payload = () => JSON.parse(container.querySelector<HTMLInputElement>('input[name="groupsJson"]')!.value);
+async function click(text: string, scope: ParentNode = container) { const button = Array.from(scope.querySelectorAll("button")).find((item) => item.textContent === text || item.getAttribute("aria-label") === text); expect(button, text).toBeDefined(); await act(async () => button!.click()); }
+async function fill(element: HTMLSelectElement | HTMLTextAreaElement, value: string) {
+  await act(async () => { const prototype = element instanceof HTMLSelectElement ? HTMLSelectElement.prototype : HTMLTextAreaElement.prototype; Object.getOwnPropertyDescriptor(prototype, "value")!.set!.call(element, value); element.dispatchEvent(new Event(element instanceof HTMLSelectElement ? "change" : "input", { bubbles: true })); });
 }
+async function ready() { await fill(source(), "none"); await fill(binding(), "unbound"); await fill(question(), "第一个问题"); }
 
-function source() { return container.querySelector<HTMLSelectElement>("select[name=interviewId]")!; }
-function blocks() { return container.querySelector<HTMLTextAreaElement>("textarea")!; }
-function submit() { return container.querySelector<HTMLButtonElement>("button[type=submit]")!; }
-function drafts() { return Array.from(container.querySelectorAll("article")); }
-function invalidFields() { return Array.from(container.querySelectorAll('[aria-invalid="true"], [data-invalid="true"]')); }
-function choice() { return container.querySelector("dialog[open]"); }
-
-async function click(element: HTMLElement) { await act(async () => { element.click(); }); }
-async function fill(element: HTMLTextAreaElement | HTMLSelectElement, value: string) {
-  await act(async () => {
-    const prototype = element instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLSelectElement.prototype;
-    Object.getOwnPropertyDescriptor(prototype, "value")!.set!.call(element, value);
-    element.dispatchEvent(new Event(element instanceof HTMLTextAreaElement ? "input" : "change", { bubbles: true }));
+describe("grouped FAQ entry", () => {
+  it("validates source, binding and question in visual order", async () => {
+    await render(); expect(groups()).toHaveLength(1); expect(cards()).toHaveLength(1); expect(invalid()).toEqual([]);
+    await click("保存全部 1 条 FAQ"); expect(invalid()).toEqual([source(), binding(), question()]); expect(document.activeElement).toBe(source()); expect(commit).not.toHaveBeenCalled();
   });
-}
-
-describe("FAQ batch required-field feedback", () => {
-  it("defaults the source to empty and marks every empty field only after an enabled submit is clicked", async () => {
-    await renderForm();
-    expect(source().value).toBe("");
-    expect(source().required).toBe(true);
-    expect(submit().textContent).toBe("导入 FAQ");
-    expect(submit().disabled).toBe(false);
-    expect(invalidFields()).toEqual([]);
-    await click(submit());
-    expect(invalidFields()).toEqual([source(), blocks()]);
-    expect(document.activeElement).toBe(source());
-    expect(scrollIntoView.mock.contexts).toEqual([source()]);
-    expect(scrollIntoView).toHaveBeenCalledWith({ behavior: "smooth", block: "center" });
-    expect(choice()).toBeNull();
-    expect(commit).not.toHaveBeenCalled();
-    expect(beginAnalysis).not.toHaveBeenCalled();
-    expect(submit().disabled).toBe(false);
+  it("appends in place, inherits group settings and keeps other groups independent", async () => {
+    await render(); await ready(); await click("追加 FAQ");
+    expect(document.activeElement).toBe(question(0, 1)); await fill(question(0, 1), "第二个问题");
+    await fill(binding(), "bound"); await fill(groups()[0].querySelectorAll("select")[2], "experience-1");
+    await click("添加一组"); expect(document.activeElement).toBe(source(1)); expect(source(1).value).toBe("");
+    await fill(source(1), "interview-1"); await fill(binding(1), "unbound"); await fill(question(1), "另一场面试的问题");
+    await click("保存全部 3 条 FAQ"); await click("直接保存");
+    const submitted = JSON.parse((commit.mock.calls[0][1] as FormData).get("groupsJson") as string);
+    expect(submitted).toEqual([
+      expect.objectContaining({ interviewId: "none", binding: "bound", experienceId: "experience-1", category: null, items: [{ question: "第一个问题", answer: "" }, { question: "第二个问题", answer: "" }] }),
+      expect.objectContaining({ interviewId: "interview-1", binding: "unbound", experienceId: null, items: [{ question: "另一场面试的问题", answer: "" }] }),
+    ]);
   });
-
-  it("marks missing questions, binding choices, and conditional experiences together in visible order", async () => {
-    await renderForm();
-    await fill(blocks(), "Q: 问题一\n\nQ: 问题二");
-    const [first, second] = drafts();
-    const question = first.querySelector("textarea")!;
-    const binding = first.querySelector("select")!;
-    await fill(question, "   ");
-    await fill(second.querySelector("select")!, "bound");
-    const experience = second.querySelectorAll("select")[1];
-    await click(submit());
-    expect(invalidFields()).toEqual([source(), question, binding, experience]);
-    await fill(source(), "interview-1");
-    expect(source().getAttribute("aria-invalid")).toBe("false");
-    await click(submit());
-    expect(document.activeElement).toBe(question);
-    expect(scrollIntoView.mock.contexts.at(-1)).toBe(question);
-    await fill(question, "补齐问题");
-    await fill(binding, "unbound");
-    await click(submit());
-    expect(invalidFields()).toEqual([experience]);
-    expect(document.activeElement).toBe(experience);
-    await fill(experience, "experience-1");
-    expect(invalidFields()).toEqual([]);
-    await click(submit());
-    expect(choice()?.textContent).toContain("先检查重复 FAQ？");
-    expect(commit).not.toHaveBeenCalled();
-    expect(beginAnalysis).not.toHaveBeenCalled();
+  it("clears incompatible settings on binding changes", async () => {
+    await render(); await ready(); await fill(groups()[0].querySelectorAll("select")[2], "协作沟通");
+    await fill(binding(), "bound"); await fill(groups()[0].querySelectorAll("select")[2], "experience-1");
+    expect(payload()[0]).toMatchObject({ category: null, experienceId: "experience-1" });
+    await fill(binding(), "unbound"); expect(payload()[0]).toMatchObject({ category: null, experienceId: null });
   });
-
-  it("ignores unselected incomplete drafts and permits empty answers and optional categories", async () => {
-    await renderForm();
-    await fill(source(), "interview-1");
-    await fill(blocks(), "Q: 导入的问题\n\nQ: 不导入的问题");
-    const [first, second] = drafts();
-    await fill(first.querySelector("select")!, "unbound");
-    await fill(second.querySelector("textarea")!, "");
-    await click(second.querySelector("input")!);
-    await click(submit());
-    expect(invalidFields()).toEqual([]);
-    expect(choice()).not.toBeNull();
-    await click(Array.from(choice()!.querySelectorAll("button")).find((button) => button.textContent === "不分析，直接导入")!);
-    expect(commit).toHaveBeenCalledTimes(1);
-    const data = commit.mock.calls[0][1] as FormData;
-    expect(data.get("interviewId")).toBe("interview-1");
-    expect(JSON.parse(String(data.get("itemsJson")))).toEqual([{ question: "导入的问题", answer: "", binding: "unbound", category: null, experienceId: null }]);
+  it("pastes into the current group without replacing edited cards and skips malformed questions", async () => {
+    await render(); await ready(); await click("批量粘贴");
+    await fill(groups()[0].querySelector<HTMLTextAreaElement>(".faq-paste-panel textarea")!, "Q:\nA: 无问题\n---\nQ: 粘贴问题一\nA: 答案\n\nQ: 粘贴问题二");
+    expect(container.textContent).toContain("1 条缺少问题，将跳过"); await click("添加 2 条");
+    expect(cards()).toHaveLength(3); expect(question().value).toBe("第一个问题"); expect(question(0, 2).value).toBe("粘贴问题二"); expect(document.activeElement).toBe(question(0, 1));
+    expect(payload()[0].items[1]).toEqual({ question: "粘贴问题一", answer: "答案" });
   });
-
-  it("requires at least one selected FAQ and clears that error on selection", async () => {
-    await renderForm();
-    await fill(source(), "interview-1");
-    await fill(blocks(), "Q: 待选择问题");
-    await click(drafts()[0].querySelector("input")!);
-    await click(submit());
-    const selection = container.querySelector('[role="group"]');
-    expect(invalidFields()).toEqual([selection]);
-    expect(document.activeElement).toBe(selection);
-    expect(container.textContent).toContain("请至少选择一条 FAQ");
-    expect(choice()).toBeNull();
-    expect(submit().disabled).toBe(false);
-    await click(drafts()[0].querySelector("input")!);
-    expect(selection?.getAttribute("data-invalid")).toBe("false");
+  it("retains collapsed paste text and blocks unadded content", async () => {
+    await render(); await ready(); await click("批量粘贴"); await fill(groups()[0].querySelector<HTMLTextAreaElement>(".faq-paste-panel textarea")!, "Q: 尚未添加");
+    await click("收起粘贴"); await click("保存全部 1 条 FAQ"); expect(container.querySelector("dialog")).toBeNull();
+    expect(groups()[0].querySelector<HTMLTextAreaElement>(".faq-paste-panel textarea")?.value).toBe("Q: 尚未添加");
   });
-
-  it.each(["   ", "普通说明，没有 Q 标记", "Q:\nA: 只有答案"])("points to FAQ Blocks when no usable question exists: %s", async (raw) => {
-    await renderForm();
-    await fill(source(), "interview-1");
-    await fill(blocks(), raw);
-    await click(submit());
-    expect(invalidFields()).toEqual([blocks()]);
-    expect(document.activeElement).toBe(blocks());
-    expect(choice()).toBeNull();
+  it("confirms removal of filled cards and groups", async () => {
+    await render(); await ready(); await click("添加一组"); await click("移除第 1 组 FAQ 1"); await click("取消"); expect(question().value).toBe("第一个问题");
+    await click("移除第 1 组"); await click("确认移除"); expect(groups()).toHaveLength(1); expect(question().value).toBe("");
   });
-
-  it("still skips invalid parsed blocks when other selected FAQs are complete", async () => {
-    await renderForm();
-    await fill(source(), "interview-1");
-    await fill(blocks(), "Q:\nA: 无问题\n---\nQ: 有效问题");
-    await fill(drafts()[0].querySelector("select")!, "unbound");
-    await click(submit());
-    expect(invalidFields()).toEqual([]);
-    expect(choice()).not.toBeNull();
+  it("excludes deselected groups without requiring their settings", async () => {
+    await render(); await ready(); await click("添加一组"); await act(async () => groups()[1].querySelector<HTMLInputElement>('.faq-select-all input')!.click());
+    await click("保存全部 1 条 FAQ"); await click("直接保存"); expect(JSON.parse((commit.mock.calls[0][1] as FormData).get("groupsJson") as string)).toHaveLength(1);
   });
-
-  it("allows clicking without available interviews and explains how to proceed", async () => {
-    await renderForm({ interviews: [] });
-    expect(submit().disabled).toBe(false);
-    expect(container.textContent).toContain("暂无可选面试，可选择“无来源面试”");
-    await click(submit());
-    expect(document.activeElement).toBe(source());
+  it("allows empty answers and an explicit no-source choice without interviews", async () => {
+    await render({ interviews: [] }); await ready(); await click("保存全部 1 条 FAQ"); await click("直接保存"); expect(commit).toHaveBeenCalledTimes(1);
   });
-
-  it("requires a new choice when the restored interview no longer exists", async () => {
-    const items = [{ question: "恢复的问题", answer: "", binding: "unbound" as const, category: null, experienceId: null }];
-    await renderForm({ initialDraft: { batchId: "batch-1", sourceInterviewId: "removed-interview", items } });
-    expect(source().value).toBe("");
-    await click(submit());
-    expect(invalidFields()).toEqual([source()]);
-    await fill(source(), "interview-1");
-    await click(submit());
-    expect(choice()).not.toBeNull();
+  it("restores boundaries and explicit null sources independently from legacy defaults", async () => {
+    await render({ initialDraft: { batchId: "batch-1", sourceInterviewId: "interview-1", items: [
+      { groupId: "a", sourceInterviewId: null, question: "无来源", answer: "", binding: "unbound", category: null, experienceId: null },
+      { groupId: "b", sourceInterviewId: "interview-1", question: "面试题", answer: "", binding: "bound", category: null, experienceId: "experience-1" },
+    ] } });
+    expect(groups()).toHaveLength(2); expect(source().value).toBe("none"); expect(source(1).value).toBe("interview-1"); expect(binding(1).value).toBe("bound");
   });
-
-  it.each([{ interviews: [] }, { interviews: props.interviews }])("allows explicitly choosing no source with interview options $interviews", async ({ interviews }) => {
-    await renderForm({ interviews });
-    const noSource = Array.from(source().options).find((option) => option.textContent === "无来源面试")!;
-    expect(noSource).toBeDefined();
-    expect(source().value).toBe("");
-    await fill(blocks(), "Q: 无来源问题");
-    await fill(drafts()[0].querySelector("select")!, "unbound");
-    await click(submit());
-    expect(invalidFields()).toEqual([source()]);
-    await fill(source(), noSource.value);
-    expect(invalidFields()).toEqual([]);
-    await click(submit());
-    expect(choice()).not.toBeNull();
-    await click(Array.from(choice()!.querySelectorAll("button")).find((button) => button.textContent === "返回编辑")!);
-    expect(source().value).toBe("none");
-    await fill(source(), "");
-    await click(submit());
-    expect(choice()).toBeNull();
-    expect(invalidFields()).toEqual([source()]);
-    await fill(source(), noSource.value);
-    await click(submit());
-    await click(Array.from(choice()!.querySelectorAll("button")).find((button) => button.textContent === "不分析，直接导入")!);
-    expect((commit.mock.calls[0][1] as FormData).get("interviewId")).toBe("none");
+  it("requires reselecting deleted interviews and experiences", async () => {
+    await render({ initialDraft: { batchId: "batch-1", sourceInterviewId: "removed", items: [{ question: "恢复问题", answer: "", binding: "bound", category: null, experienceId: "removed" }] } });
+    await click("保存全部 1 条 FAQ"); expect(invalid()).toEqual([source(), groups()[0].querySelectorAll("select")[2]]);
   });
-
-  it("restores a saved no-source draft as an explicit no-source selection", async () => {
-    await renderForm({ interviews: [], initialDraft: { batchId: "batch-1", sourceInterviewId: null, items: [{ question: "无来源草稿", answer: "", binding: "unbound", category: null, experienceId: null }] } });
-    expect(source().value).toBe("none");
-    await click(submit());
-    expect(invalidFields()).toEqual([]);
-    expect(choice()).not.toBeNull();
+  it("retains failed submissions and prevents duplicate saves", async () => {
+    const saving = Promise.withResolvers<{ error: string; success: null }>(); commit.mockReturnValueOnce(saving.promise);
+    await render(); await ready(); await click("保存全部 1 条 FAQ"); await click("直接保存"); await click("保存中…"); expect(commit).toHaveBeenCalledTimes(1);
+    await act(async () => saving.resolve({ error: "保存失败", success: null })); expect(question().value).toBe("第一个问题"); expect(container.textContent).toContain("保存失败");
   });
-
-  it("keeps the submit button clickable during saving without starting another import", async () => {
-    const saving = Promise.withResolvers<{ error: null; success: string }>();
-    commit.mockReturnValueOnce(saving.promise);
-    await renderForm({ initialDraft: { batchId: "", sourceInterviewId: "interview-1", items: [{ question: "测试问题", answer: "", binding: "unbound", category: null, experienceId: null }] } });
-    expect(source().value).toBe("interview-1");
-    await click(submit());
-    await click(Array.from(choice()!.querySelectorAll("button")).find((button) => button.textContent === "不分析，直接导入")!);
-    expect(submit().disabled).toBe(false);
-    expect(submit().getAttribute("aria-busy")).toBe("true");
-    const waitingChoice = choice();
-    await click(submit());
-    expect(choice()).toBe(waitingChoice);
-    expect(commit).toHaveBeenCalledTimes(1);
-    await act(async () => { saving.resolve({ error: null, success: "已导入。" }); });
-    expect(choice()).toBeNull();
-  });
-
-  it("respects reduced motion when moving to the first missing field", async () => {
-    vi.mocked(window.matchMedia).mockReturnValue({ matches: true } as MediaQueryList);
-    await renderForm();
-    await click(submit());
-    expect(scrollIntoView).toHaveBeenCalledWith({ behavior: "instant", block: "center" });
+  it("caps manual and pasted entry at 100 cards", async () => {
+    await render({ initialDraft: { batchId: "batch", sourceInterviewId: null, items: Array.from({ length: 100 }, (_, i) => ({ question: `题 ${i}`, answer: "", binding: "unbound", category: null, experienceId: null })) } });
+    expect(Array.from(container.querySelectorAll("button")).find((button) => button.textContent === "添加一组")?.disabled).toBe(true);
+    expect(Array.from(container.querySelectorAll("button")).find((button) => button.textContent === "追加 FAQ")?.disabled).toBe(true);
   });
 });

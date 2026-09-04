@@ -5,7 +5,7 @@ import { getDatabaseRuntime } from "@/db/runtime";
 import { events, experiences, faqImportBatches, faqOccurrences, faqs, interviews, jobTracks, users } from "@/db/schema";
 import { createFaqAiGateway } from "@/adapters/ai/openai-compatible-faq";
 import { analyzeFaqSimilarity, type FaqSimilarityGateway } from "./faq-ai";
-import { validateFaqBatch, type FaqBatchItem } from "./faq-batch";
+import { faqSourceInterviewId, validateFaqBatch, type FaqImportItem } from "./faq-batch";
 import { prepareFaqMerge } from "./faq-merge";
 import { assertFaqCategoriesSupported } from "./service";
 
@@ -15,7 +15,7 @@ export type FaqImportDecision = {
   merges: Array<{ targetFaqId: string; itemIds: string[]; answer: string; expectedUpdatedAt: string }>;
 };
 
-export async function createFaqImportBatch(input: { userId: string; idempotencyKey: string; interviewId: string | null; items: FaqBatchItem[]; replaceBatchId?: string; withoutAnalysis?: boolean }) {
+export async function createFaqImportBatch(input: { userId: string; idempotencyKey: string; interviewId: string | null; items: FaqImportItem[]; replaceBatchId?: string; withoutAnalysis?: boolean }) {
   return getDatabaseRuntime().db.transaction(async (tx) => {
     await tx.select({ id: users.id }).from(users).where(eq(users.id, input.userId)).for("update");
     const [existing] = await tx.select().from(faqImportBatches).where(and(eq(faqImportBatches.userId, input.userId), eq(faqImportBatches.idempotencyKey, input.idempotencyKey)));
@@ -28,7 +28,7 @@ export async function createFaqImportBatch(input: { userId: string; idempotencyK
       await assertReferences(tx, input.userId, input.interviewId, input.items);
       await tx.update(faqImportBatches).set({
         idempotencyKey: input.idempotencyKey, sourceInterviewId: input.interviewId,
-        items: items.map((item) => ({ ...item, id: randomUUID(), binding: item.experienceId ? "bound" as const : "unbound" as const })),
+        items: items.map((item, index) => ({ ...item, id: randomUUID(), binding: item.experienceId ? "bound" as const : "unbound" as const, groupId: input.items[index].groupId, sourceInterviewId: faqSourceInterviewId(input.items[index], input.interviewId) })),
         status: input.withoutAnalysis ? "failed" : "pending", matches: null, result: null,
         errorMessage: null, leaseToken: null, leaseExpiresAt: null, updatedAt: new Date(),
       }).where(eq(faqImportBatches.id, previous.id));
@@ -41,7 +41,8 @@ export async function createFaqImportBatch(input: { userId: string; idempotencyK
     const id = randomUUID();
     await tx.insert(faqImportBatches).values({
       id, userId: input.userId, idempotencyKey: input.idempotencyKey, sourceInterviewId: input.interviewId,
-      items: items.map((item) => ({ ...item, id: randomUUID(), binding: item.experienceId ? "bound" as const : "unbound" as const })),
+      items: items.map((item, index) => ({ ...item, id: randomUUID(), binding: item.experienceId ? "bound" as const : "unbound" as const, groupId: input.items[index].groupId, sourceInterviewId: faqSourceInterviewId(input.items[index], input.interviewId) })),
+      status: input.withoutAnalysis ? "failed" : "pending",
     });
     return { batchId: id };
   });
@@ -115,9 +116,20 @@ export async function getFaqImportReview(userId: string, batchId: string) {
     frequency: sql<number>`(SELECT count(*)::int FROM ${faqOccurrences} WHERE ${faqOccurrences.faqId} = ${faqs.id})`,
   }).from(faqs).leftJoin(experiences, eq(experiences.id, faqs.experienceId)).where(and(eq(faqs.userId, userId), inArray(faqs.id, ids))) : [];
   const experienceRows = await getDatabaseRuntime().db.select({ id: experiences.id, name: experiences.name }).from(experiences).where(eq(experiences.userId, userId));
+  const sourceIds = [...new Set(batch.items.flatMap((item) => {
+    const id = faqSourceInterviewId(item, batch.sourceInterviewId);
+    return id ? [id] : [];
+  }))];
+  const sourceRows = sourceIds.length ? await getDatabaseRuntime().db.select({ id: interviews.id, companyName: jobTracks.companyName, roleName: jobTracks.roleName, roundLabel: interviews.roundLabel })
+    .from(interviews).innerJoin(jobTracks, eq(jobTracks.id, interviews.jobTrackId))
+    .where(and(eq(jobTracks.userId, userId), inArray(interviews.id, sourceIds))) : [];
   return {
     id: batch.id, status: batch.status, errorMessage: batch.errorMessage, sourceInterviewId: batch.sourceInterviewId,
-    items: batch.items.map((item) => ({ ...item, experienceName: experienceRows.find((experience) => experience.id === item.experienceId)?.name ?? null })),
+    items: batch.items.map((item) => {
+      const sourceInterviewId = faqSourceInterviewId(item, batch.sourceInterviewId);
+      const source = sourceRows.find((row) => row.id === sourceInterviewId);
+      return { ...item, sourceInterviewId, sourceInterviewLabel: source ? `${source.companyName} · ${source.roleName} · ${source.roundLabel}` : sourceInterviewId ? "来源面试已删除" : "无来源面试", experienceName: experienceRows.find((experience) => experience.id === item.experienceId)?.name ?? null };
+    }),
     matches: batch.matches ?? [], targets: targets.map((target) => ({ ...target, updatedAt: target.updatedAt.toISOString() })),
   };
 }
@@ -153,7 +165,7 @@ export async function finalizeFaqImportBatch(input: { userId: string; batchId: s
       if (!target || target.updatedAt.toISOString() !== merge.expectedUpdatedAt || items.some((item) => item.experienceId !== target.experienceId || batch.matches?.find((match) => match.incomingFaqId === item.id)?.existingFaqId !== target.id)) throw new Error("CONFLICT: 匹配的 FAQ 已被修改或删除，请刷新复核页后重新确认。");
       const merged = prepareFaqMerge({ ...target, frequency: 0 }, items, merge.answer);
       await tx.update(faqs).set({ question: merged.question, answer: merged.answer, updatedAt: new Date() }).where(eq(faqs.id, target.id));
-      await tx.insert(faqOccurrences).values(items.map(() => ({ faqId: target.id, sourceInterviewId: batch.sourceInterviewId })));
+      await tx.insert(faqOccurrences).values(items.map((item) => ({ faqId: target.id, sourceInterviewId: faqSourceInterviewId(item, batch.sourceInterviewId) })));
       faqIds.push(target.id);
       mergedCount += items.length;
     }
@@ -161,15 +173,19 @@ export async function finalizeFaqImportBatch(input: { userId: string; batchId: s
     if (newItems.length) {
       const rows = validateFaqBatch(newItems).map((item) => ({ ...item, id: randomUUID(), userId: input.userId }));
       await tx.insert(faqs).values(rows);
-      await tx.insert(faqOccurrences).values(rows.map((item) => ({ faqId: item.id, sourceInterviewId: batch.sourceInterviewId })));
+      await tx.insert(faqOccurrences).values(rows.map((item, index) => ({ faqId: item.id, sourceInterviewId: faqSourceInterviewId(newItems[index], batch.sourceInterviewId) })));
       faqIds.push(...rows.map((item) => item.id));
     }
-    if (batch.sourceInterviewId) {
-      const [interview] = await tx.select().from(interviews).where(eq(interviews.id, batch.sourceInterviewId)).for("update");
+    const sourceIds = [...new Set(batch.items.flatMap((item) => {
+      const id = faqSourceInterviewId(item, batch.sourceInterviewId);
+      return id ? [id] : [];
+    }))].sort();
+    for (const sourceId of sourceIds) {
+      const [interview] = await tx.select().from(interviews).where(eq(interviews.id, sourceId)).for("update");
       if (interview && !interview.occurredAt) {
         const now = new Date();
         await tx.update(interviews).set({ occurredAt: now, updatedAt: now, version: sql`${interviews.version} + 1` }).where(eq(interviews.id, interview.id));
-        await tx.insert(events).values({ userId: input.userId, jobTrackId: interview.jobTrackId, kind: "InterviewOccurred", subjectType: "interview", subjectId: interview.id, occurredAt: now, actionId: `${batch.id}:occurred`, payload: { confirmedBy: "faq_batch" } });
+        await tx.insert(events).values({ userId: input.userId, jobTrackId: interview.jobTrackId, kind: "InterviewOccurred", subjectType: "interview", subjectId: interview.id, occurredAt: now, actionId: `${batch.id}:occurred:${interview.id}`, payload: { confirmedBy: "faq_batch" } });
       }
     }
     const result = { faqIds, importedCount: newItems.length, mergedCount };
@@ -178,11 +194,15 @@ export async function finalizeFaqImportBatch(input: { userId: string; batchId: s
   });
 }
 
-async function assertReferences(tx: Transaction, userId: string, interviewId: string | null, rawItems: FaqBatchItem[]) {
+async function assertReferences(tx: Transaction, userId: string, interviewId: string | null, rawItems: FaqImportItem[]) {
   const items = validateFaqBatch(rawItems);
-  if (interviewId) {
-    const [interview] = await tx.select({ status: interviews.status }).from(interviews).innerJoin(jobTracks, eq(jobTracks.id, interviews.jobTrackId)).where(and(eq(interviews.id, interviewId), eq(jobTracks.userId, userId)));
-    if (!interview || interview.status === "cancelled") throw new Error("VALIDATION_ERROR: 来源面试不存在或已取消。");
+  const sourceIds = [...new Set(rawItems.flatMap((item) => {
+    const id = faqSourceInterviewId(item, interviewId);
+    return id ? [id] : [];
+  }))];
+  if (sourceIds.length) {
+    const sources = await tx.select({ id: interviews.id, status: interviews.status }).from(interviews).innerJoin(jobTracks, eq(jobTracks.id, interviews.jobTrackId)).where(and(inArray(interviews.id, sourceIds), eq(jobTracks.userId, userId))).orderBy(asc(interviews.id)).for("update", { of: interviews });
+    if (sources.length !== sourceIds.length || sources.some((source) => source.status === "cancelled")) throw new Error("VALIDATION_ERROR: 来源面试不存在或已取消。");
   }
   const ids = [...new Set(items.flatMap((item) => item.experienceId ? [item.experienceId] : []))];
   if (ids.length) {

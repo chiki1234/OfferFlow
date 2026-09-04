@@ -3,24 +3,24 @@
 import { useActionState, useCallback, useState } from "react";
 import { Link2, Plus, Trash2 } from "lucide-react";
 import { OperationModal } from "@/components/operation-modal";
-import type { FaqCategoryConfig } from "@/modules/interview-knowledge/faq-batch";
-import { ExperienceForm, FaqBatchForm, ResumeExperienceForm } from "./knowledge-forms";
+import { ExperienceForm, ResumeExperienceForm } from "./knowledge-forms";
+import { FaqEntryForm, type FaqEntryFormProps } from "./faq-entry-form";
 import { deleteExperienceAction, type KnowledgeActionState } from "./actions";
 
 type Experience = { id: string; name: string };
-type Interview = { id: string; companyName: string; roleName: string; roundLabel: string };
 type Resume = { id: string; name: string; experienceIds: string[] };
 const initialDeleteState: KnowledgeActionState = { error: null, success: null };
 
-export function KnowledgeCreateButton({ token, interviews, experiences, faqCategories }: { token: string; interviews: Interview[]; experiences: Experience[]; faqCategories: FaqCategoryConfig }) {
-  const [open, setOpen] = useState(false);
-  const close = useCallback(() => setOpen(false), []);
-  return <><button className="primary-button" onClick={() => setOpen(true)} type="button"><Plus size={17} />新增知识</button>{open && <OperationModal onClose={close} title="新增知识"><KnowledgeCreateForm experiences={experiences} faqCategories={faqCategories} interviews={interviews} onSuccess={close} token={token} /></OperationModal>}</>;
+export function FaqCreateButton(props: Omit<FaqEntryFormProps, "token" | "onSuccess" | "initialDraft">) {
+  const [token, setToken] = useState<string | null>(null);
+  const close = useCallback(() => setToken(null), []);
+  return <><button className="primary-button" onClick={() => setToken(globalThis.crypto.randomUUID())} type="button"><Plus size={17} />新增 FAQ</button>{token && <OperationModal onClose={close} title="新增 FAQ"><FaqEntryForm {...props} onSuccess={close} token={token} /></OperationModal>}</>;
 }
 
-export function KnowledgeCreateForm({ token, interviews, experiences, faqCategories, onSuccess }: { token: string; interviews: Interview[]; experiences: Experience[]; faqCategories: FaqCategoryConfig; onSuccess?: () => void }) {
-  const [kind, setKind] = useState<"faq" | "experience">("faq");
-  return <div className="create-form"><label>新增类型<select value={kind} onChange={(event) => setKind(event.target.value as typeof kind)}><option value="faq">批量导入 FAQ</option><option value="experience">新增经历</option></select></label>{kind === "faq" ? <FaqBatchForm experiences={experiences} faqCategories={faqCategories} interviews={interviews} onSuccess={onSuccess} token={token} /> : <ExperienceForm onSuccess={onSuccess} />}</div>;
+export function ExperienceCreateButton() {
+  const [open, setOpen] = useState(false);
+  const close = useCallback(() => setOpen(false), []);
+  return <><button className="secondary-button" onClick={() => setOpen(true)} type="button"><Plus size={17} />新增经历</button>{open && <OperationModal onClose={close} title="新增经历"><ExperienceForm onSuccess={close} /></OperationModal>}</>;
 }
 
 export function ManageResumeExperienceButton({ resumes, experiences }: { resumes: Resume[]; experiences: Experience[] }) {

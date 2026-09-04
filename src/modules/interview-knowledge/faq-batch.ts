@@ -23,6 +23,16 @@ export type FaqBatchItem = {
 
 export type ValidatedFaqBatchItem = Omit<FaqBatchItem, "binding"> & { kind: FaqKind };
 
+export type FaqImportItem = FaqBatchItem & {
+  groupId?: string;
+  sourceInterviewId?: string | null;
+};
+
+// Undefined belongs to a legacy batch; explicit null means no interview source.
+export function faqSourceInterviewId(item: Pick<FaqImportItem, "sourceInterviewId">, legacySource: string | null) {
+  return item.sourceInterviewId === undefined ? legacySource : item.sourceInterviewId;
+}
+
 export function isFaqSettingsComplete(item: Pick<FaqBatchItem, "category" | "experienceId">) {
   return Boolean(item.experienceId || item.category);
 }
@@ -41,6 +51,7 @@ export function validateFaqBatch(items: FaqBatchItem[]): ValidatedFaqBatchItem[]
       if (category) throw new Error("VALIDATION_ERROR: experience-bound FAQ cannot have a category");
       return { question, answer, kind: "experience", category: null, experienceId: item.experienceId };
     }
+    if (item.binding !== "unbound") throw new Error("VALIDATION_ERROR: FAQ binding is required");
     if (item.experienceId) throw new Error("VALIDATION_ERROR: unbound FAQ cannot reference an Experience");
     return { question, answer, kind: "general", category, experienceId: null };
   });

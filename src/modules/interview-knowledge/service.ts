@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import {
   actionReceipts,
   events,
@@ -11,10 +11,11 @@ import {
   jobTracks,
   resumeExperiences,
   resumes,
+  users,
 } from "@/db/schema";
 import type { AppDatabase } from "@/db/client";
 import { getDatabaseRuntime } from "@/db/runtime";
-import { defaultFaqCategories, validateFaqBatch, type FaqBatchItem, type ValidatedFaqBatchItem } from "./faq-batch";
+import { defaultFaqCategories, faqSourceInterviewId, validateFaqBatch, type FaqBatchItem, type FaqImportItem, type ValidatedFaqBatchItem } from "./faq-batch";
 
 type AppTransaction = Parameters<Parameters<AppDatabase["transaction"]>[0]>[0];
 
@@ -89,28 +90,31 @@ export async function commitFaqBatch(input: {
   userId: string;
   idempotencyKey: string;
   interviewId: string | null;
-  items: FaqBatchItem[];
+  items: FaqImportItem[];
   committedAt: string;
 }) {
   const items = validateFaqBatch(input.items);
   const committedAt = parseTimestamp(input.committedAt);
   return getDatabaseRuntime().db.transaction(async (transaction) => {
+    await transaction.select({ id: users.id }).from(users).where(eq(users.id, input.userId)).for("update");
     const [receipt] = await transaction.select({ result: actionReceipts.result }).from(actionReceipts)
       .where(and(eq(actionReceipts.userId, input.userId), eq(actionReceipts.idempotencyKey, input.idempotencyKey))).limit(1);
     if (receipt) return receipt.result as { faqIds: string[]; interviewOccurred: boolean };
 
-    const interview = input.interviewId
-      ? (await transaction.select({
+    const sourceIds = input.items.map((item) => faqSourceInterviewId(item, input.interviewId));
+    const interviewIds = [...new Set(sourceIds.filter((id): id is string => id !== null))];
+    const sourceInterviews = interviewIds.length
+      ? await transaction.select({
           id: interviews.id,
           jobTrackId: interviews.jobTrackId,
           status: interviews.status,
           occurredAt: interviews.occurredAt,
         }).from(interviews)
           .innerJoin(jobTracks, eq(jobTracks.id, interviews.jobTrackId))
-          .where(and(eq(interviews.id, input.interviewId), eq(jobTracks.userId, input.userId))).limit(1))[0]
-      : null;
-    if (input.interviewId && !interview) throw new Error("NOT_FOUND: interview was not found");
-    if (interview?.status === "cancelled") throw new Error("CONFLICT: cancelled interview cannot receive FAQs");
+          .where(and(inArray(interviews.id, interviewIds), eq(jobTracks.userId, input.userId))).orderBy(asc(interviews.id)).for("update", { of: interviews })
+      : [];
+    if (sourceInterviews.length !== interviewIds.length) throw new Error("NOT_FOUND: interview was not found");
+    if (sourceInterviews.some((interview) => interview.status === "cancelled")) throw new Error("CONFLICT: cancelled interview cannot receive FAQs");
 
     const experienceIds = [...new Set(items.flatMap((item) => item.experienceId ? [item.experienceId] : []))];
     if (experienceIds.length) {
@@ -120,8 +124,9 @@ export async function commitFaqBatch(input: {
     }
     await assertFaqCategoriesSupported(transaction, input.userId, items);
 
-    const interviewOccurred = interview?.occurredAt === null;
-    if (interview && interviewOccurred) {
+    const newlyOccurred = sourceInterviews.filter((interview) => interview.occurredAt === null);
+    const interviewOccurred = newlyOccurred.length > 0;
+    for (const interview of newlyOccurred) {
       await transaction.update(interviews).set({
         occurredAt: committedAt,
         updatedAt: committedAt,
@@ -135,7 +140,7 @@ export async function commitFaqBatch(input: {
         subjectType: "interview",
         subjectId: interview.id,
         occurredAt: committedAt,
-        actionId: `${input.idempotencyKey}:occurred`,
+        actionId: `${input.idempotencyKey}:occurred:${interview.id}`,
         payload: { confirmedBy: "faq_batch" },
       });
     }
@@ -150,7 +155,7 @@ export async function commitFaqBatch(input: {
       category: item.category,
     }));
     await transaction.insert(faqs).values(faqRows);
-    await transaction.insert(faqOccurrences).values(faqRows.map((faq) => ({ faqId: faq.id, sourceInterviewId: interview?.id ?? null })));
+    await transaction.insert(faqOccurrences).values(faqRows.map((faq, index) => ({ faqId: faq.id, sourceInterviewId: sourceIds[index] })));
     const result = { faqIds: faqRows.map((faq) => faq.id), interviewOccurred };
     await transaction.insert(actionReceipts).values({
       userId: input.userId,

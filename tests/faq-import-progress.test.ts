@@ -3,7 +3,7 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FaqImportProgress } from "../src/app/faq/import-progress";
-import { KnowledgeCreateButton } from "../src/app/faq/knowledge-actions";
+import { FaqCreateButton } from "../src/app/faq/knowledge-actions";
 import { FaqImportRecovery } from "../src/app/faq/import-recovery";
 
 const { router, confirmImport, retryAnalysis, beginAnalysis, importEdited } = vi.hoisted(() => ({
@@ -99,15 +99,16 @@ async function fillTextArea(element: HTMLTextAreaElement, value: string) {
 }
 
 async function startFromKnowledgePage() {
-  await act(async () => { root.render(createElement(KnowledgeCreateButton, { token: "test-import-token", interviews: interviewOptions, experiences: [], faqCategories: [] })); });
-  await clickButton("新增知识");
+  await act(async () => { root.render(createElement(FaqCreateButton, { interviews: interviewOptions, experiences: [], faqCategories: [] })); });
+  await clickButton("新增 FAQ");
   const interview = container.querySelector<HTMLSelectElement>("select[name=interviewId]")!;
   await act(async () => { interview.value = "interview-1"; interview.dispatchEvent(new Event("change", { bubbles: true })); });
-  await fillTextArea(container.querySelector("textarea")!, "Q: 测试失败后跳过 AI\nA: 测试答案");
-  const binding = container.querySelector<HTMLSelectElement>(".faq-draft-meta select")!;
+  await fillTextArea(container.querySelector("textarea")!, "测试失败后跳过 AI");
+  await fillTextArea(container.querySelectorAll("textarea")[1], "测试答案");
+  const binding = container.querySelector<HTMLSelectElement>(".faq-group-fields > label:not(.faq-group-source) select")!;
   await act(async () => { binding.value = "unbound"; binding.dispatchEvent(new Event("change", { bubbles: true })); });
-  await clickButton("导入 1 条 FAQ");
-  expect(container.querySelector("dialog h2")?.textContent).toBe("先检查重复 FAQ？");
+  await clickButton("保存全部 1 条 FAQ");
+  expect(container.querySelector("dialog h2")?.textContent).toBe("检查相似 FAQ？");
   await clickButton("使用 AI 分析");
 }
 
@@ -209,15 +210,15 @@ describe("FAQ import failure fallback", () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(7500); });
     await clickButton("返回编辑");
     expect(container.querySelector("dialog[open]")).toBeNull();
-    expect(container.querySelector("textarea")?.value).toBe("Q: 测试失败后跳过 AI\nA: 测试答案");
-    expect(container.querySelector<HTMLSelectElement>(".faq-draft-meta select")?.value).toBe("unbound");
-    await fillTextArea(container.querySelector<HTMLTextAreaElement>(".faq-draft textarea")!, "修改后的问题");
-    await clickButton("导入 1 条 FAQ");
-    await clickButton("不分析，直接导入");
+    expect(container.querySelector("textarea")?.value).toBe("测试失败后跳过 AI");
+    expect(container.querySelector<HTMLSelectElement>(".faq-group-fields > label:not(.faq-group-source) select")?.value).toBe("unbound");
+    await fillTextArea(container.querySelector<HTMLTextAreaElement>(".faq-entry-card textarea")!, "修改后的问题");
+    await clickButton("保存全部 1 条 FAQ");
+    await clickButton("直接保存");
     const submitted = importEdited.mock.calls[0][0] as FormData;
     expect(submitted.get("replaceBatchId")).toBe("batch-1");
     expect(submitted.get("idempotencyKey")).not.toBe("test-import-token");
-    expect(JSON.parse(String(submitted.get("itemsJson")))[0]).toMatchObject({ question: "修改后的问题", answer: "测试答案", binding: "unbound" });
+    expect(JSON.parse(String(submitted.get("groupsJson")))[0].items[0]).toMatchObject({ question: "修改后的问题", answer: "测试答案" });
     expect(container.querySelector("dialog[open], [role=dialog]")).toBeNull();
     expect(fetchMock).toHaveBeenCalledTimes(4);
   });
@@ -226,13 +227,13 @@ describe("FAQ import failure fallback", () => {
     await startFromKnowledgePage();
     await act(async () => { await vi.advanceTimersByTimeAsync(2500); });
     await clickButton("返回编辑");
-    await fillTextArea(container.querySelector<HTMLTextAreaElement>(".faq-draft textarea")!, "重新分析这个问题");
-    await clickButton("导入 1 条 FAQ");
+    await fillTextArea(container.querySelector<HTMLTextAreaElement>(".faq-entry-card textarea")!, "重新分析这个问题");
+    await clickButton("保存全部 1 条 FAQ");
     await clickButton("使用 AI 分析");
     const submitted = beginAnalysis.mock.calls[1][0] as FormData;
     expect(submitted.get("replaceBatchId")).toBe("batch-1");
     expect(submitted.get("idempotencyKey")).not.toBe("test-import-token");
-    expect(JSON.parse(String(submitted.get("itemsJson")))[0].question).toBe("重新分析这个问题");
+    expect(JSON.parse(String(submitted.get("groupsJson")))[0].items[0].question).toBe("重新分析这个问题");
   });
 
   it("reuses the edited submission key for retries but changes it after another edit", async () => {
@@ -240,13 +241,13 @@ describe("FAQ import failure fallback", () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(2500); });
     await clickButton("返回编辑");
     importEdited.mockResolvedValueOnce({ result: null, error: "暂时无法导入" }).mockResolvedValueOnce({ result: null, error: "暂时无法导入" });
-    await clickButton("导入 1 条 FAQ");
-    await clickButton("不分析，直接导入");
-    await clickButton("不分析，直接导入");
+    await clickButton("保存全部 1 条 FAQ");
+    await clickButton("直接保存");
+    await clickButton("直接保存");
     await clickButton("返回编辑");
-    await fillTextArea(container.querySelector<HTMLTextAreaElement>(".faq-draft textarea")!, "再次修改问题");
-    await clickButton("导入 1 条 FAQ");
-    await clickButton("不分析，直接导入");
+    await fillTextArea(container.querySelector<HTMLTextAreaElement>(".faq-entry-card textarea")!, "再次修改问题");
+    await clickButton("保存全部 1 条 FAQ");
+    await clickButton("直接保存");
     const keys = importEdited.mock.calls.map((args) => (args[0] as FormData).get("idempotencyKey"));
     expect(keys[0]).toBe(keys[1]);
     expect(keys[2]).not.toBe(keys[1]);
@@ -266,11 +267,11 @@ describe("FAQ import failure fallback", () => {
     expect(modal!.querySelector("h2")?.textContent).toBe("编辑待导入 FAQ");
     expect(modal!.contains(container.querySelector(".faq-import-form"))).toBe(true);
     expect(document.body.style.overflow).toBe("hidden");
-    const questions = modal!.querySelectorAll<HTMLTextAreaElement>(".faq-draft textarea");
+    const questions = modal!.querySelectorAll<HTMLTextAreaElement>(".faq-entry-card textarea");
     expect(questions[0].value).toBe("恢复问题");
     expect(questions[1].value).toBe("恢复答案");
     expect(container.querySelector<HTMLSelectElement>("select[name=interviewId]")?.value).toBe("interview-1");
-    expect(Array.from(container.querySelectorAll<HTMLSelectElement>(".faq-draft-meta select")).map((select) => select.value)).toEqual(["bound", "experience-1"]);
+    expect(Array.from(container.querySelectorAll<HTMLSelectElement>(".faq-group-fields > label:not(.faq-group-source) select")).map((select) => select.value)).toEqual(["bound", "experience-1"]);
     await fillTextArea(questions[0], "关闭后保留的问题");
     await fillTextArea(questions[1], "关闭后保留的答案");
     const interview = modal!.querySelector<HTMLSelectElement>("select[name=interviewId]")!;
@@ -288,20 +289,20 @@ describe("FAQ import failure fallback", () => {
     await clickButton("继续编辑");
     expect(container.querySelector<HTMLElement>(".modal-backdrop")?.style.display).not.toBe("none");
     expect(document.body.style.overflow).toBe("hidden");
-    expect(container.querySelector<HTMLTextAreaElement>(".faq-draft textarea")?.value).toBe("关闭后保留的问题");
+    expect(container.querySelector<HTMLTextAreaElement>(".faq-entry-card textarea")?.value).toBe("关闭后保留的问题");
     expect(container.querySelector<HTMLSelectElement>("select[name=interviewId]")?.value).toBe("");
     expect(fetchMock).toHaveBeenCalledTimes(requestsBeforeClose);
     expect(router.replace).not.toHaveBeenCalled();
-    await clickButton("导入 1 条 FAQ");
+    await clickButton("保存全部 1 条 FAQ");
     expect(container.querySelector("dialog[open]")).toBeNull();
     expect(interview.getAttribute("aria-invalid")).toBe("true");
     await act(async () => { interview.value = "interview-1"; interview.dispatchEvent(new Event("change", { bubbles: true })); });
-    await clickButton("导入 1 条 FAQ");
-    await clickButton("不分析，直接导入");
+    await clickButton("保存全部 1 条 FAQ");
+    await clickButton("直接保存");
     const submitted = importEdited.mock.calls[0][0] as FormData;
     expect(submitted.get("replaceBatchId")).toBe("batch-1");
     expect(submitted.get("interviewId")).toBe("interview-1");
-    expect(JSON.parse(String(submitted.get("itemsJson")))[0]).toMatchObject({ question: "关闭后保留的问题", answer: "关闭后保留的答案", binding: "bound", experienceId: "experience-1" });
+    expect(JSON.parse(String(submitted.get("groupsJson")))[0].items[0]).toMatchObject({ question: "关闭后保留的问题", answer: "关闭后保留的答案" });
     expect(beginAnalysis).not.toHaveBeenCalled();
     expect(container.querySelector("dialog[open], [role=dialog]")).toBeNull();
     expect(document.body.style.overflow).toBe("");
@@ -309,27 +310,27 @@ describe("FAQ import failure fallback", () => {
   });
 
   it("closes both dialogs after importing from the knowledge page and starts a fresh form next time", async () => {
-    await act(async () => { root.render(createElement(KnowledgeCreateButton, { token: "test-import-token", interviews: interviewOptions, experiences: [], faqCategories: [] })); });
+    await act(async () => { root.render(createElement(FaqCreateButton, { interviews: interviewOptions, experiences: [], faqCategories: [] })); });
     const clickButton = async (text: string) => {
       const button = Array.from(container.querySelectorAll("button")).find((item) => item.textContent === text);
       expect(button).toBeDefined();
       await act(async () => { button!.click(); });
     };
-    await clickButton("新增知识");
+    await clickButton("新增 FAQ");
     const interview = container.querySelector<HTMLSelectElement>("select[name=interviewId]")!;
     await act(async () => { interview.value = "interview-1"; interview.dispatchEvent(new Event("change", { bubbles: true })); });
     const blocks = container.querySelector("textarea")!;
     await act(async () => {
-      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(blocks, "Q: 测试失败后跳过 AI\nA: 测试答案");
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(blocks, "测试失败后跳过 AI");
       blocks.dispatchEvent(new Event("input", { bubbles: true }));
     });
-    const binding = container.querySelector<HTMLSelectElement>(".faq-draft-meta select")!;
+    const binding = container.querySelector<HTMLSelectElement>(".faq-group-fields > label:not(.faq-group-source) select")!;
     await act(async () => {
       binding.value = "unbound";
       binding.dispatchEvent(new Event("change", { bubbles: true }));
     });
-    await clickButton("导入 1 条 FAQ");
-    expect(container.querySelector("dialog h2")?.textContent).toBe("先检查重复 FAQ？");
+    await clickButton("保存全部 1 条 FAQ");
+    expect(container.querySelector("dialog h2")?.textContent).toBe("检查相似 FAQ？");
     await clickButton("使用 AI 分析");
     await act(async () => { await vi.advanceTimersByTimeAsync(2500); });
     expect(container.textContent).toContain("这次分析未能完成");
@@ -337,7 +338,7 @@ describe("FAQ import failure fallback", () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
     expect(container.querySelector("dialog[open], [role=dialog]")).toBeNull();
     expect(router.replace).toHaveBeenLastCalledWith("/faq?imported=1&merged=0");
-    await clickButton("新增知识");
+    await clickButton("新增 FAQ");
     expect(container.querySelector("textarea")?.value).toBe("");
     expect(container.querySelector("dialog[open]")).toBeNull();
   });

@@ -1,14 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
-import { BookOpen, BriefcaseBusiness, ClipboardPlus, ListPlus, Plus, Send } from "lucide-react";
-import { KnowledgeCreateForm } from "@/app/faq/knowledge-actions";
+import { BookOpen, BriefcaseBusiness, ClipboardPlus, Layers3, ListPlus, Plus, Send } from "lucide-react";
+import { FaqEntryForm } from "@/app/faq/faq-entry-form";
+import { ExperienceForm } from "@/app/faq/knowledge-forms";
 import { CreateJobForm } from "@/app/jobs/create-job-form";
 import { loadGlobalQuickOptionsAction } from "@/app/quick/actions";
 import { QuickProgressForm, QuickTaskForm } from "@/app/quick/quick-forms";
 import { OperationModal } from "@/components/operation-modal";
 
-type QuickKind = "planned" | "active" | "progress" | "task" | "knowledge";
+type QuickKind = "planned" | "active" | "progress" | "task" | "faq" | "experience";
 type QuickOptions = Awaited<ReturnType<typeof loadGlobalQuickOptionsAction>>;
 
 const quickActions = [
@@ -16,7 +17,8 @@ const quickActions = [
   { kind: "active" as const, label: "新增已投递岗位", icon: Send },
   { kind: "progress" as const, label: "记录进展", icon: ClipboardPlus },
   { kind: "task" as const, label: "新增待办", icon: ListPlus },
-  { kind: "knowledge" as const, label: "新增知识", icon: BookOpen },
+  { kind: "faq" as const, label: "新增 FAQ", icon: BookOpen },
+  { kind: "experience" as const, label: "新增经历", icon: Layers3 },
 ];
 
 export function GlobalQuickActions() {
@@ -37,7 +39,7 @@ export function GlobalQuickActions() {
     setActiveKind(kind);
     setToken(globalThis.crypto.randomUUID());
     setLoadError(false);
-    if (!options) {
+    if (!options && kind !== "experience") {
       startTransition(async () => {
         try {
           setOptions(await loadGlobalQuickOptionsAction());
@@ -73,14 +75,14 @@ export function GlobalQuickActions() {
         <button aria-expanded={menuOpen} aria-label={menuOpen ? "关闭全局快捷操作" : "打开全局快捷操作"} className="floating-add" onClick={() => setMenuOpen((current) => !current)} type="button"><Plus size={24} /></button>
       </div>
       {activeKind && <OperationModal onClose={closeModal} title={title}>
-        {isPending && !options ? <p className="modal-loading">正在准备操作表单…</p> : loadError ? <div className="modal-error"><p>操作选项加载失败，请重试。</p><button className="secondary-button" onClick={() => openAction(activeKind)} type="button">重新加载</button></div> : options ? (
+        {activeKind === "experience" ? <ExperienceForm onSuccess={closeModal} /> : isPending && !options ? <p className="modal-loading">正在准备操作表单…</p> : loadError ? <div className="modal-error"><p>操作选项加载失败，请重试。</p><button className="secondary-button" onClick={() => openAction(activeKind)} type="button">重新加载</button></div> : options ? (
           activeKind === "planned" || activeKind === "active"
             ? <CreateJobForm experiences={options.experiences} fixedCreationMode={activeKind} idempotencyKey={token} onSuccess={closeModal} resumes={options.resumes} />
             : activeKind === "progress"
               ? <QuickProgressForm currentLocal={toShanghaiLocalInput(new Date())} embedded jobs={options.jobs} onSuccess={closeModal} token={token} />
               : activeKind === "task"
                 ? <QuickTaskForm embedded interviews={options.interviews} jobs={options.jobs} onSuccess={closeModal} token={token} unboundTasks={[]} />
-                : <KnowledgeCreateForm experiences={options.experiences} faqCategories={options.faqCategories} interviews={options.interviews} onSuccess={closeModal} token={token} />
+                : <FaqEntryForm experiences={options.experiences} faqCategories={options.faqCategories} interviews={options.interviews} onSuccess={closeModal} token={token} />
         ) : null}
       </OperationModal>}
     </>

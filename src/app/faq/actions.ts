@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { NO_SOURCE_INTERVIEW } from "@/modules/interview-knowledge/faq-batch";
+import { parseFaqImportForm } from "@/modules/interview-knowledge/faq-import-input";
 import { commitFaqBatch, createExperience, createFaqCategory, deleteExperience, deleteFaq, deleteFaqCategory, renameFaqCategory, setResumeExperiences, updateExperience, updateFaq } from "@/modules/interview-knowledge/service";
 import { getCurrentActor } from "@/shared/actor/current-actor";
 import { logServerError } from "@/shared/logging/server-error";
@@ -55,18 +55,8 @@ export async function deleteExperienceAction(_state: KnowledgeActionState, formD
 
 export async function commitFaqBatchAction(_state: KnowledgeActionState, formData: FormData): Promise<KnowledgeActionState> {
   try {
-    const data = z.object({
-      idempotencyKey: z.string().min(8), interviewId: z.union([z.uuid(), z.literal(NO_SOURCE_INTERVIEW)]).transform((value) => value === NO_SOURCE_INTERVIEW ? null : value), itemsJson: z.string().min(2).max(1_000_000),
-    }).parse({
-      idempotencyKey: formData.get("idempotencyKey"), interviewId: formData.get("interviewId"), itemsJson: formData.get("itemsJson"),
-    });
-    const items = z.array(z.object({
-      question: z.string().trim().min(1).max(10_000),
-      answer: z.string().trim().max(100_000),
-      binding: z.enum(["bound", "unbound"]),
-      category: z.string().trim().max(64).nullable(),
-      experienceId: z.uuid().nullable(),
-    })).min(1).max(100).parse(JSON.parse(data.itemsJson));
+    const data = parseFaqImportForm(formData);
+    const items = data.items;
     await commitFaqBatch({
       userId: (await getCurrentActor()).userId,
       idempotencyKey: data.idempotencyKey,
@@ -76,12 +66,13 @@ export async function commitFaqBatchAction(_state: KnowledgeActionState, formDat
     });
     revalidatePath("/");
     revalidatePath("/faq");
+    revalidatePath("/experiences/[id]", "page");
     revalidatePath("/jobs/[id]", "page");
-    if (data.interviewId) revalidatePath(`/interviews/${data.interviewId}`);
-    return { error: null, success: `已导入 ${items.length} 条 FAQ。` };
+    revalidatePath("/interviews/[id]", "page");
+    return { error: null, success: `已保存 ${items.length} 条 FAQ。` };
   } catch (error) {
     logServerError("Failed to commit FAQ batch", error);
-    return { error: "FAQ 导入失败，请检查问题内容或已填写的设置。", success: null };
+    return { error: "FAQ 保存失败，请检查标红项目。", success: null };
   }
 }
 

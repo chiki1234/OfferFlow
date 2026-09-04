@@ -11,7 +11,7 @@ vi.mock("next/navigation", () => ({ useRouter: () => router }));
 vi.mock("../src/app/faq/import-actions", () => ({ confirmFaqImport: confirmImport, generateFaqAnswer: generateAnswer }));
 
 type Review = ComponentProps<typeof FaqImportReview>["review"];
-const item = (id: string): Review["items"][number] => ({ id, question: `导入问题 ${id}`, answer: `导入答案 ${id}`, binding: "unbound", category: null, experienceId: null, experienceName: null });
+const item = (id: string): Review["items"][number] => ({ id, question: `导入问题 ${id}`, answer: `导入答案 ${id}`, binding: "unbound", category: null, experienceId: null, experienceName: null, sourceInterviewId: null, sourceInterviewLabel: "无来源面试" });
 const target = (id: string): Review["targets"][number] => ({ id, question: `已有问题 ${id}`, answer: `已有答案 ${id}`, category: "综合能力", experienceId: null, experienceName: null, frequency: 2, updatedAt: "2026-09-04T00:00:00.000Z" });
 const fixture = (): Review => ({
   id: "batch", status: "review", errorMessage: null, sourceInterviewId: null,
