@@ -769,7 +769,8 @@ a {
 .faq-filter-bar .primary-button { border: 0; cursor: pointer; }
 .filter-reset { align-self: center; color: var(--brand); font-size: 11px; font-weight: 750; }
 .filter-summary { margin: 12px 2px 0; color: var(--muted); font-size: 11px; }
-.faq-card { position: relative; padding: 20px; }
+.faq-card { position: relative; padding: 20px; cursor: pointer; transition: border-color 160ms ease, box-shadow 160ms ease; }
+.faq-card:hover { border-color: #c8d8cc; box-shadow: 0 14px 44px rgba(42, 54, 47, 0.075); }
 .faq-card-meta { display: flex; gap: 8px; padding-right: 36px; }
 .faq-card-meta span { border-radius: 999px; background: #e9f2eb; color: var(--brand-dark); padding: 5px 8px; font-size: 10px; font-weight: 750; }
 .faq-card-meta.incomplete span { background: #fff1df; color: #9a5a22; }

@@ -1,13 +1,37 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useId, useState, type MouseEvent, type ReactNode } from "react";
 import { ChevronDown } from "lucide-react";
 
-export function FaqAnswerDisclosure({ answer, question }: { answer: string; question: string }) {
+const CARD_ACTION_SELECTOR =
+  "a, button, input, select, textarea, summary, [role='button'], [role='link'], [data-faq-card-action]";
+
+export function FaqAnswerDisclosure({
+  answer,
+  children,
+  footer,
+  question,
+}: {
+  answer: string;
+  children?: ReactNode;
+  footer: ReactNode;
+  question: string;
+}) {
   const [open, setOpen] = useState(false);
   const answerId = useId();
 
-  return <>
+  function handleCardClick(event: MouseEvent<HTMLElement>) {
+    if (
+      event.target instanceof Element &&
+      event.target.closest(CARD_ACTION_SELECTOR)
+    ) return;
+    const selection = window.getSelection();
+    if (selection && !selection.isCollapsed) return;
+    setOpen((current) => !current);
+  }
+
+  return <article className="surface-card faq-card" data-open={open} onClick={handleCardClick}>
+    {children}
     <button
       aria-controls={answerId}
       aria-expanded={open}
@@ -20,5 +44,6 @@ export function FaqAnswerDisclosure({ answer, question }: { answer: string; ques
       <ChevronDown size={18} />
     </button>
     {open && <p className="faq-card-answer" id={answerId}>{answer || "暂未记录答案"}</p>}
-  </>;
+    {footer}
+  </article>;
 }

@@ -33,7 +33,7 @@ export function ResumeExperienceForm({ resumes, experiences }: { resumes: Array<
 export function FaqEditor({ faq, experiences, faqCategories, incomplete = false }: { faq: { id: string; question: string; answer: string; category: string | null; experienceId: string | null }; experiences: Array<{ id: string; name: string }>; faqCategories: FaqCategoryConfig; incomplete?: boolean }) {
   const [open, setOpen] = useState(false);
   const close = useCallback(() => setOpen(false), []);
-  return <div className="faq-editor">
+  return <div className="faq-editor" data-faq-card-action>
     <button className={incomplete ? "faq-settings-button incomplete" : "faq-settings-button"} onClick={() => setOpen(true)} type="button">{incomplete ? <AlertCircle size={14} /> : <Settings2 size={14} />}{incomplete ? "补充设置" : "编辑 FAQ"}</button>
     {open && <FaqEditorModal experiences={experiences} faq={faq} faqCategories={faqCategories} incomplete={incomplete} onClose={close} />}
   </div>;
