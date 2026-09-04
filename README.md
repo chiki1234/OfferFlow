@@ -16,8 +16,8 @@
 - 未绑定 FAQ 的自定义分类、待补充筛选，以及经历/FAQ 的编辑、删除与引用保护
 - FAQ 导入可选 AI 相似识别、人工分组复核与按需合并答案，累计出现次数并保留全部来源面试
 - 日历时间冲突提示和通用进展 Timeline 记录
-- Better Auth 账号密码登录、数据库会话、关闭公开注册、全站访问保护和退出登录
-- PostgreSQL schema、MinIO 私有对象存储和十一份 migration
+- Better Auth 邮箱密码公开注册、强制邮箱验证、找回密码、数据库会话、全站访问保护和退出登录
+- PostgreSQL schema、MinIO 私有对象存储和十二份 migration
 - 真实数据驱动的工作台关注区、岗位“当前 / 下一步”、分组列表、可翻周日历和 Timeline
 - GitHub Actions 持续运行 Lint、测试、类型检查、生产构建，并用真实 PostgreSQL + MinIO 执行迁移、健康检查与导出烟测
 - CI 集成场景会真实执行简历 / Transcript 上传、投递、测评、面试、准备任务与 FAQ 知识回流，并从五个读取视图和双用户隔离场景反向验收
@@ -55,7 +55,19 @@ pnpm dev
 
 服务就绪检查：<http://localhost:3000/api/health>。认证配置、数据库和私有对象存储均可用时返回 `200`，并分别报告三项非敏感检查结果。
 
-默认认证入口是 `AUTH_MODE=password`：使用邮箱账号、scrypt 密码哈希和数据库会话，公开注册关闭，只能通过 `pnpm auth:create-user` 创建账号。`AUTH_MODE=local` 仅保留给 CI 和受信任的单用户开发环境；生产环境默认拒绝固定用户模式。
+默认认证入口是 `AUTH_MODE=password`：使用邮箱账号、scrypt 密码哈希和数据库会话。任何人可在 `/register` 注册，验证邮箱后才能登录；`/forgot-password` 提供邮件找回密码，`/reset-password` 完成重设并撤销所有旧会话。管理员仍可通过 `pnpm auth:create-user` 创建受信任的已验证账号。`AUTH_MODE=local` 仅保留给 CI 和受信任的单用户开发环境；生产环境默认拒绝固定用户模式。
+
+## 公开账号与邮件配置
+
+在 `.env.local` 或部署环境中配置 `SMTP_HOST`、`SMTP_PORT`、`SMTP_USER`、`SMTP_PASSWORD`、`SMTP_FROM`。`SMTP_FROM` 应使用邮件服务商已允许的发件人，例如 `OfferFlow <no-reply@你的域名>`。465 端口使用隐式 TLS，其他端口强制 STARTTLS，通常使用 587；不会降级为明文发送认证信息。所有配置只在服务端使用。
+
+验证邮件和重设密码邮件使用 `APP_URL` 生成地址，因此正式上线前必须改成真实的 HTTPS 域名。两类链接均为一小时有效，密码重设令牌只能成功使用一次；验证失败或链接失效时页面会提供重新申请入口。注册与找回密码使用统一反馈，不直接暴露邮箱是否已注册。浏览器单次认证请求等待最多 15 秒，网络失败后可重试。
+
+本地未配置 SMTP 时，已有已验证账号仍可登录，注册、重发验证邮件和申请重设密码返回明确的邮件服务未就绪错误。生产账号密码模式要求完整邮件配置，健康检查会检查配置是否齐全，但不代表邮件实际投递成功。邮件在常驻 Node 进程中异步发送，失败会记录不含邮件正文、令牌或凭据的服务端错误；需要在所选服务商上配置发件域名并完成真实收信验收。若改用请求结束后冻结进程的平台，必须接入平台可靠后台任务或邮件队列。
+
+上线顺序：先暂停公开账号写入并执行全部迁移，再启动新版本。`0011_public_account_registration` 只把迁移时已有的本地密码账号标记为已验证，保留原账号访问能力；必须在开放注册前执行，避免把新用户误当作存量受信任账号。其他业务数据不变，后续新注册账号仍默认未验证。
+
+生产环境按来源 IP 限制注册为每分钟 5 次，重发验证邮件和找回密码各每分钟 3 次；登录沿用 Better Auth 的更严格限制。当前限制存储在进程内，适合单实例部署；反向代理必须覆盖客户端伪造的转发 IP 头，多实例部署需配置共享限流存储。公开开放前还应落实 AI 使用额度、数据处理说明和备份恢复流程。
 
 生产容器镜像可以用 `docker build -t job-hunting-web .` 构建；运行时需注入 `.env.example` 中列出的环境变量。正式的多实例镜像构建还应通过安全的 CI secret 向 Dockerfile 的同名 build args 注入 `NEXT_SERVER_ACTIONS_ENCRYPTION_KEY` 与 `DEPLOYMENT_VERSION`。
 
@@ -70,6 +82,7 @@ pnpm test
 pnpm build
 pnpm test:integration # 需要已迁移的 PostgreSQL 与已创建 Bucket 的 MinIO
 pnpm test:faq-ai # 真实 PostgreSQL：导入暂存、合并、频率、来源、幂等、隔离与冲突保护
+pnpm test:auth # 真实 PostgreSQL：注册、验证、登录、找回密码、过期/重复令牌、旧会话撤销和双用户隔离；邮件投递使用捕获替身
 ```
 
 ## FAQ AI 配置与运行
@@ -126,4 +139,4 @@ Get-ChildItem .runtime/logs/ai -Recurse -Filter *.json | Sort-Object LastWriteTi
 
 Release A（投递、测评、面试、待办、Timeline、工作台与周日历）和 Release B（Experience、Resume 关联、FAQ Block 解析与知识库）均已实现。账号密码认证、本机真实依赖验收、生产容器、安全响应头、健康检查和结构化导出也已完成。
 
-进入正式部署前仍需确定域名、反向代理、部署平台、数据库/对象存储托管方案，以及找回密码或邀请流程。
+进入正式部署前仍需确定域名、反向代理、部署平台、数据库/对象存储托管方案，配置真实 SMTP 并验收收信，再完成 AI 配额、数据处理说明和备份恢复。账号注册与找回密码流程已具备。

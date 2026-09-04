@@ -24,7 +24,7 @@ function isNavigationActive(pathname: string, href: string) {
 
 export function WorkspaceShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  if (pathname === "/login") return <>{children}</>;
+  if (["/login", "/register", "/forgot-password", "/reset-password"].includes(pathname)) return <>{children}</>;
 
   return (
     <div className="workspace-shell">

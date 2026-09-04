@@ -21,10 +21,10 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
     actor,
   );
   return (
-    <main className="page-stack">
+    <main className="page-stack page-stack-compact">
       <nav className="calendar-navigation" aria-label="切换周"><Link className="secondary-button" href={`/calendar?week=${week.previousKey}`}><ChevronLeft size={16} />上一周</Link><div><strong>{formatWeekRange(week.startAt, week.endAt)}</strong>{week.key !== currentWeekKey && <Link href="/calendar">回到本周</Link>}</div><Link className="secondary-button" href={`/calendar?week=${week.nextKey}`}>下一周<ChevronRight size={16} /></Link></nav>
       {view.items.length === 0 ? (
-        <section className="surface-card empty-state jobs-empty" style={{ marginTop: 40 }}>
+        <section className="surface-card empty-state jobs-empty calendar-empty">
           <span className="empty-icon"><CalendarDays size={22} /></span>
           <div><strong>还没有日历事项</strong><p>记录第一场面试或测评后，周视图会自动出现。</p></div>
         </section>

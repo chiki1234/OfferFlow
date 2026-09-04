@@ -43,6 +43,7 @@ try {
     providerId: "credential",
     password: await hashPassword(password),
   });
+  await db.update(users).set({ emailVerified: true, updatedAt: new Date() }).where(eq(users.id, user.id));
   console.log(`已创建可登录账号 ${email}`);
 } finally {
   await close();

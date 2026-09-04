@@ -78,6 +78,13 @@
       "when": 1788407173856,
       "tag": "0010_faq_ai_review",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1788459610264,
+      "tag": "0011_public_account_registration",
+      "breakpoints": true
     }
   ]
 }

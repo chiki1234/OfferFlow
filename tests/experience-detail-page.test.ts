@@ -11,7 +11,7 @@ const { getExperienceDetail, getExperienceOptions, getCurrentActor } = vi.hoiste
 
 vi.mock("next/link", () => ({ default: ({ children }: { children: unknown }) => children }));
 vi.mock("next/navigation", () => ({ notFound: vi.fn() }));
-vi.mock("lucide-react", () => ({ ArrowLeft: () => null }));
+vi.mock("lucide-react", () => ({ ArrowLeft: () => null, ChevronDown: () => null }));
 vi.mock("@/modules/interview-knowledge/queries", () => ({ getExperienceDetail, getExperienceOptions }));
 vi.mock("@/shared/actor/current-actor", () => ({ getCurrentActor }));
 vi.mock("@/app/faq/knowledge-forms", () => ({
@@ -41,5 +41,8 @@ describe("experience FAQ editor", () => {
 
     expect(getExperienceOptions).toHaveBeenCalledWith("user-1");
     expect(markup).toContain('data-experience-options="当前经历|其他经历"');
+    expect(markup).toContain('aria-label="展开“测试问题”的答案"');
+    expect(markup).toContain('aria-expanded="false"');
+    expect(markup).not.toContain("暂未记录答案");
   });
 });

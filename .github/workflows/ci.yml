@@ -73,6 +73,8 @@ jobs:
         run: pnpm test:integration
       - name: Exercise FAQ AI import and merge persistence
         run: pnpm test:faq-ai
+      - name: Exercise public account registration and recovery
+        run: pnpm test:auth
       - name: Smoke-test production runtime
         run: |
           pnpm start > /tmp/job-hunting-web.log 2>&1 &

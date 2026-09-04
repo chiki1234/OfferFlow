@@ -51,6 +51,11 @@ describe("resolveActorFromEnvironment", () => {
         AUTH_MODE: "password",
         AUTH_SECRET: "a-secure-authentication-secret-value",
         NODE_ENV: "production",
+        SMTP_HOST: "smtp.example.com",
+        SMTP_PORT: "587",
+        SMTP_USER: "mailer",
+        SMTP_PASSWORD: "mail-secret",
+        SMTP_FROM: "OfferFlow <no-reply@example.com>",
       }),
     ).not.toThrow();
   });
@@ -61,8 +66,24 @@ describe("resolveActorFromEnvironment", () => {
         APP_URL: "https://jobs.example.com",
         AUTH_MODE: "password",
         AUTH_SECRET: "too-short",
+        SMTP_HOST: "smtp.example.com",
+        SMTP_PORT: "587",
+        SMTP_USER: "mailer",
+        SMTP_PASSWORD: "mail-secret",
+        SMTP_FROM: "OfferFlow <no-reply@example.com>",
       }),
     ).toThrow("AUTH_SECRET must contain at least 32 characters");
+  });
+
+  it("公开账号模式缺少发信配置时拒绝就绪", () => {
+    expect(() =>
+      validateAuthenticationEnvironment({
+        APP_URL: "https://jobs.example.com",
+        AUTH_MODE: "password",
+        AUTH_SECRET: "a-secure-authentication-secret-value",
+        NODE_ENV: "production",
+      }),
+    ).toThrow("SMTP_HOST");
   });
 
   it("本地单用户模式要求配置用户 ID", () => {

@@ -7,6 +7,11 @@ export type ActorEnvironment = {
   NODE_ENV?: string;
   APP_URL?: string;
   AUTH_SECRET?: string;
+  SMTP_HOST?: string;
+  SMTP_PORT?: string;
+  SMTP_USER?: string;
+  SMTP_PASSWORD?: string;
+  SMTP_FROM?: string;
 };
 
 export type AuthenticationMode = "local" | "password";
@@ -60,5 +65,14 @@ export function validateAuthenticationEnvironment(environment: ActorEnvironment)
   const parsed = new URL(appUrl);
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
     throw new Error("APP_URL must use http or https");
+  }
+  if (environment.NODE_ENV === "production") {
+    for (const name of ["SMTP_HOST", "SMTP_PORT", "SMTP_USER", "SMTP_PASSWORD", "SMTP_FROM"] as const) {
+      if (!environment[name]?.trim()) throw new Error(`${name} is required when AUTH_MODE=password`);
+    }
+    const smtpPort = Number(environment.SMTP_PORT);
+    if (!Number.isInteger(smtpPort) || smtpPort < 1 || smtpPort > 65535) {
+      throw new Error("SMTP_PORT must be an integer between 1 and 65535");
+    }
   }
 }

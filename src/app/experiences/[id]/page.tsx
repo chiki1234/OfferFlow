@@ -3,9 +3,9 @@ import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { getExperienceDetail, getExperienceOptions } from "@/modules/interview-knowledge/queries";
 import { getCurrentActor } from "@/shared/actor/current-actor";
-import { ExperienceEditor, FaqEditor } from "@/app/faq/knowledge-forms";
+import { ExperienceEditor } from "@/app/faq/knowledge-forms";
 import { isDomainNotFoundError } from "@/shared/errors/domain-error";
-import { FaqFrequency, FaqSources } from "@/app/faq/faq-facts";
+import { FaqCard } from "@/app/faq/faq-card";
 
 export const dynamic = "force-dynamic";
 
@@ -19,8 +19,8 @@ export default async function ExperienceDetailPage({ params }: { params: Promise
     }),
     getExperienceOptions(actor.userId),
   ]);
-  return <main className="page-stack"><Link className="back-link" href="/faq"><ArrowLeft size={16} />返回 FAQ</Link><header className="page-heading"><div><p className="eyebrow">Experience</p><h1>{view.experience.name}</h1><p className="page-description">{view.faqs.length} 条历史 FAQ · {view.resumes.length} 个简历版本正在使用</p></div></header>
+  return <main className="page-stack"><Link className="back-link" href="/faq?view=experiences"><ArrowLeft size={16} />返回经历视图</Link><header className="page-heading"><div><p className="eyebrow">Experience</p><h1>{view.experience.name}</h1><p className="page-description">{view.faqs.length} 条历史 FAQ · {view.resumes.length} 个简历版本正在使用</p></div></header>
     <section className="surface-card detail-section experience-content"><p>{view.experience.content}</p>{view.resumes.length > 0 && <div className="resume-tags">{view.resumes.map((resume) => <span key={resume.id}>{resume.name}</span>)}</div>}<ExperienceEditor experience={view.experience} /></section>
-    <section className="experience-faq-section"><div className="section-title-row"><div><p className="eyebrow">问题积累</p><h2>围绕该经历被问过什么？</h2></div></div><div className="faq-card-list">{view.faqs.map((faq) => <article className="surface-card faq-card" key={faq.id}><div className="faq-card-meta"><span>{view.experience.name}</span><FaqFrequency count={faq.frequency} /></div><h3>{faq.question}</h3><p>{faq.answer || "暂未记录答案"}</p><FaqSources sources={faq.sources} /><FaqEditor faq={faq} experiences={experienceOptions} faqCategories={view.faqCategories} /></article>)}</div></section>
+    <section className="experience-faq-section"><div className="section-title-row"><div><p className="eyebrow">问题积累</p><h2>围绕该经历被问过什么？</h2></div></div><div className="faq-card-list faq-card-list-expanded">{view.faqs.map((faq) => <FaqCard key={faq.id} faq={{ ...faq, experienceName: view.experience.name }} experiences={experienceOptions} faqCategories={view.faqCategories} />)}</div></section>
   </main>;
 }
