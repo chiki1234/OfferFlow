@@ -22,6 +22,7 @@
 </p>
 
 <p align="center">
+  <a href="#-产品预览">产品预览</a> ·
   <a href="#-为什么做-offerflow">为什么做</a> ·
   <a href="#-核心功能">核心功能</a> ·
   <a href="#-快速开始">快速开始</a> ·
@@ -69,6 +70,34 @@ FAQ
 ```
 
 真正关联起来。
+
+---
+
+## 🖼️ 产品预览
+
+### 工作台与求职流程
+
+<p align="center">
+  <img src="./docs/screenshots/overview.jpg" alt="OfferFlow 工作台与求职列表" width="100%" />
+</p>
+
+工作台聚合待办、近期安排和流程状态；求职列表按阶段组织岗位，并直接展示当前状态与下一步行动。
+
+### 岗位详情与日历
+
+<p align="center">
+  <img src="./docs/screenshots/workflow.jpg" alt="OfferFlow 岗位详情与日历" width="100%" />
+</p>
+
+从岗位 Timeline、JD、投递简历到测评与面试，再通过周日历统一管理关键时间节点。
+
+### FAQ 与经历知识库
+
+<p align="center">
+  <img src="./docs/screenshots/knowledge.jpg" alt="OfferFlow FAQ 与经历知识库" width="100%" />
+</p>
+
+将面试 FAQ、项目经历与简历版本关联起来，让一次次面试产生的信息逐渐沉淀成可复用的个人求职知识库。
 
 ---
 
