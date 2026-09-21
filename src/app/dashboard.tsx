@@ -1,6 +1,7 @@
 "use client";
 
 import { AttentionSettingsForm } from "./attention-settings-form";
+import { CompanyJobSearch } from "@/components/company-job-search";
 import { eventLabel, eventDetail } from "@/modules/workspace-queries/event-display";
 import { useCallback, useState, useTransition } from "react";
 import Link from "next/link";
@@ -127,6 +128,7 @@ export function Dashboard({
 
   return (
     <main className="dashboard-page">
+      <CompanyJobSearch />
       <header className="dashboard-header">
         <div>
           <h1>

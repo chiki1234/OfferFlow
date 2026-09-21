@@ -3,7 +3,7 @@
 import { useRef, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Search } from "lucide-react";
+import { CompanyJobSearchField } from "@/components/company-job-search";
 
 export function JobsSearch({ query, tab, counts }: { query: string; tab: string; counts: { planned: number; active: number; ended: number } }) {
   const router = useRouter();
@@ -18,13 +18,13 @@ export function JobsSearch({ query, tab, counts }: { query: string; tab: string;
   };
   useEffect(() => { if (input.current && document.activeElement !== input.current) input.current.value = query; }, [query]);
   useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, [tab]);
-  return <><nav className="tab-list" aria-label="岗位生命周期">{([{ key: "planned", label: "待投递" }, { key: "active", label: "进行中" }, { key: "ended", label: "已结束" }] as const).map(item => <Link key={item.key} className={tab === item.key ? "active" : undefined} href={`/jobs?${new URLSearchParams({ tab: item.key, ...(draft ? { q: draft } : {}) })}`} onClick={() => { if (timer.current) clearTimeout(timer.current); }}>{item.label}<span>{counts[item.key]}</span></Link>)}</nav><label className="jobs-search"><Search size={17} aria-hidden="true" />
-    <input ref={input} aria-label="搜索公司名称或岗位名称" type="search" placeholder="搜索公司 / 岗位" defaultValue={query} onCompositionStart={() => {
+  return <><div className="company-job-search jobs-search">
+    <CompanyJobSearchField ref={input} defaultValue={query} onCompositionStart={() => {
       composing.current = true;
       if (timer.current) clearTimeout(timer.current);
     }} onCompositionEnd={event => { composing.current = false; search(event.currentTarget.value); }} onChange={event => {
       setEditing({ source: query, value: event.target.value });
       if (!composing.current) search(event.target.value);
     }} />
-  </label></>;
+  </div><nav className="tab-list" aria-label="岗位生命周期">{([{ key: "planned", label: "待投递" }, { key: "active", label: "进行中" }, { key: "ended", label: "已结束" }] as const).map(item => <Link key={item.key} className={tab === item.key ? "active" : undefined} href={`/jobs?${new URLSearchParams({ tab: item.key, ...(draft ? { q: draft } : {}) })}`} onClick={() => { if (timer.current) clearTimeout(timer.current); }}>{item.label}<span>{counts[item.key]}</span></Link>)}</nav></>;
 }

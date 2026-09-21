@@ -1157,10 +1157,13 @@ a {
 .company-department { color: #64766d; font-size: 13px; margin: 4px 0; }
 
 .jobs-tab-toolbar { position: sticky; top: 0; z-index: 20; background: var(--background, #f7f8f5); padding-top: 12px; flex-wrap: wrap; }
-.jobs-search { display: flex; align-items: center; gap: 8px; flex: 1 1 180px; min-width: 160px; border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; background: var(--surface); }
-.jobs-search input { width: 100%; min-width: 0; border: 0; outline: none; background: transparent; color: inherit; font: inherit; }
-.jobs-search:focus-within { outline: 2px solid var(--brand); outline-offset: 2px; }
-@media (max-width: 760px) { .jobs-search { flex: none; } }
+.company-job-search { display:flex; align-items:center; gap:8px; width:min(100%, 480px); min-width:0; margin-inline:auto; }
+.company-job-search-field { display:flex; align-items:center; gap:8px; flex:1; min-width:0; min-height:44px; border:1px solid var(--line); border-radius:10px; padding:8px 12px; background:var(--surface); font-size:13px; }
+.company-job-search-field svg { flex-shrink:0; }
+.company-job-search-field input { width:100%; min-width:0; border:0; outline:none; background:transparent; color:inherit; font:inherit; }
+.company-job-search-field:focus-within { outline:2px solid var(--brand); outline-offset:2px; }
+.company-job-search > button { flex-shrink:0; min-height:44px; }
+.dashboard-page > .company-job-search { margin-bottom:24px; }
 
 .jobs-table-scroll { width: 100%; overflow-x: auto; border: 1px solid var(--border, #e1e5df); border-radius: 14px; background: white; }
 .jobs-table { width: 100%; min-width: 1180px; border-collapse: collapse; font-size: 13px; text-align: left; }
