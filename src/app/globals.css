@@ -1130,7 +1130,13 @@ a {
 .interview-detail-layout { width: 100%; }
 @media(max-width: 700px) { .form-row { flex-wrap: wrap; } .form-row > label { flex-basis: 160px; } .operation-modal { max-height: calc(100dvh - 24px); } .modal-content { max-height: none; } .company-job-heading { align-items: flex-start; flex-wrap: wrap; } .form-save-bar, .modal-content .faq-entry-footer { bottom: -20px; } }
 
-.calendar-toolbar { display: flex; gap: 20px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+.calendar-toolbar { display:grid; grid-template-columns:minmax(0,1fr) minmax(180px,36%) minmax(0,1fr); gap:20px; align-items:center; }
+.calendar-toolbar > .tab-list { justify-self:end; }
+@media (min-width:761px) and (max-width:1100px) { .calendar-toolbar { grid-template-columns:auto minmax(160px,1fr) auto; } }
+@media (max-width:760px) {
+  .calendar-toolbar { grid-template-columns:minmax(0,1fr) auto; }
+  .calendar-toolbar > .company-job-search { grid-column:1 / -1; grid-row:2; }
+}
 .calendar-toolbar .section-actions { align-items: center; flex-direction: row; flex-wrap: wrap; }
 .calendar-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); overflow: hidden; padding: 0; }
 .calendar-weekday { padding: 14px 4px; text-align: center; border-bottom: 1px solid var(--line); color: var(--muted); font-size: 13px; }
@@ -1163,7 +1169,6 @@ a {
 .company-job-search-field input { width:100%; min-width:0; border:0; outline:none; background:transparent; color:inherit; font:inherit; }
 .company-job-search-field:focus-within { outline:2px solid var(--brand); outline-offset:2px; }
 .company-job-search > button { flex-shrink:0; min-height:44px; }
-.dashboard-page > .company-job-search { margin-bottom:24px; }
 
 .jobs-table-scroll { width: 100%; overflow-x: auto; border: 1px solid var(--border, #e1e5df); border-radius: 14px; background: white; }
 .jobs-table { width: 100%; min-width: 1180px; border-collapse: collapse; font-size: 13px; text-align: left; }

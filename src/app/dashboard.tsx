@@ -128,7 +128,6 @@ export function Dashboard({
 
   return (
     <main className="dashboard-page">
-      <CompanyJobSearch />
       <header className="dashboard-header">
         <div>
           <h1>
@@ -140,6 +139,7 @@ export function Dashboard({
           </h1>
           <p>专注积累，静待花开</p>
         </div>
+        <CompanyJobSearch />
         <div className="dashboard-profile">
           <span className="dashboard-today">
             {date.date} · {date.weekday}

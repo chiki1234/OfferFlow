@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { CompanyJobSearch } from "@/components/company-job-search";
 import type { CalendarItem } from "@/modules/workspace-queries/interface";
 import { calendarRange, itemsForDay, shanghaiDay, shiftDay } from "@/modules/workspace-queries/calendar-range";
 
@@ -15,6 +16,7 @@ export function CalendarView({ range, items, mode, today }: { range: ReturnType<
         <Link className="secondary-button" href={url(range.next)}>下一{mode === "week" ? "周" : "月"} →</Link>
         <Link className="secondary-button" href={url(today)}>今天</Link>
       </div>
+      <CompanyJobSearch />
       <nav className="tab-list" aria-label="日历视图">
         <Link className={mode === "week" ? "active" : ""} aria-current={mode === "week" ? "page" : undefined} href={url(range.selected, "week")}>周</Link>
         <Link className={mode === "month" ? "active" : ""} aria-current={mode === "month" ? "page" : undefined} href={url(range.selected, "month")}>月</Link>

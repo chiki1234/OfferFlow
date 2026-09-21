@@ -14,11 +14,17 @@
   border-color: #e7eeea;
 }
 .dashboard-header {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(180px, 36%) minmax(0, 1fr);
   align-items: center;
   justify-content: space-between;
   gap: 24px;
   margin-bottom: 32px;
+}
+.dashboard-header > .dashboard-profile { justify-self: end; min-width: 0; }
+@media (max-width: 760px) {
+  .dashboard-header { grid-template-columns: minmax(0, 1fr) auto; }
+  .dashboard-header > .company-job-search { grid-column: 1 / -1; grid-row: 2; }
 }
 .dashboard-header > div:first-child {
   min-width: 0;
