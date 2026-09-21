@@ -1,11 +1,11 @@
 import { and, asc, desc, eq, max, sql } from "drizzle-orm";
 import type { AppDatabase } from "@/db/client";
 import { assetLinks, assets, assessments, events, experiences, faqs, interviews, jobDescriptions, jobTracks, resumeExperiences, resumes, tasks } from "@/db/schema";
-import { deriveJobTrackStatus, type JobTrackFacts } from "./derive-job-track-status";
+import { deriveJobTrackStatus, jobWaitingDays, type JobTrackFacts } from "./derive-job-track-status";
 import { deriveJobTrackCurrentNext, type JobTrackCurrentNextFacts } from "./derive-job-track-current-next";
 import { markCalendarConflicts } from "./calendar-conflicts";
 import { sortDashboardActionItems } from "./dashboard-priority";
-import { findImminentInterviewPreparationTasks } from "./dashboard-preparation";
+import { interviewReviewDeadline } from "./interview-review";
 import type {
   CalendarItem,
   DashboardActionItem,
@@ -36,7 +36,7 @@ export function createPostgresWorkspaceQueries(db: AppDatabase): WorkspaceQuerie
           view = await readJobTracks(db, loaders, context.userId, query.lifecycle);
           break;
         case "get_dashboard":
-          view = await readDashboard(db, loaders, context.userId, parseNow(query.now));
+          view = await readDashboard(db, loaders, context.userId, parseNow(query.now), query.waitingDays);
           break;
         case "get_calendar_week": {
           const startAt = parseBoundary(query.startAt, "startAt");
@@ -74,8 +74,11 @@ function createLoaders(db: AppDatabase) {
         jobTrackId: assessments.jobTrackId,
         companyName: jobTracks.companyName,
         roleName: jobTracks.roleName,
+        department: jobTracks.department,
+        preferenceRank: jobTracks.preferenceRank,
         kind: assessments.kind,
         title: assessments.title,
+        assessmentUrl: assessments.assessmentUrl,
         timingType: assessments.timingType,
         deadlineAt: assessments.deadlineAt,
         startAt: assessments.startAt,
@@ -93,9 +96,13 @@ function createLoaders(db: AppDatabase) {
         jobTrackId: interviews.jobTrackId,
         companyName: jobTracks.companyName,
         roleName: jobTracks.roleName,
+        department: jobTracks.department,
+        preferenceRank: jobTracks.preferenceRank,
         roundLabel: interviews.roundLabel,
         interviewType: interviews.interviewType,
         sequenceNo: interviews.sequenceNo,
+        timingType: interviews.timingType,
+        deadlineAt: interviews.deadlineAt,
         startAt: interviews.startAt,
         endAt: interviews.endAt,
         status: interviews.status,
@@ -118,9 +125,11 @@ function createLoaders(db: AppDatabase) {
         assessmentId: tasks.assessmentId,
         companyName: jobTracks.companyName,
         roleName: jobTracks.roleName,
+        department: jobTracks.department,
+        preferenceRank: jobTracks.preferenceRank,
         kind: tasks.kind,
         title: tasks.title,
-        deadlineAt: tasks.deadlineAt,
+        deadlineAt: tasks.deadlineAt, startAt: tasks.startAt, endAt: tasks.endAt,
         completedAt: tasks.completedAt,
         cancelledAt: tasks.cancelledAt,
       }).from(tasks)
@@ -141,6 +150,8 @@ async function readJobTrackDetail(
       id: jobTracks.id,
       companyName: jobTracks.companyName,
       roleName: jobTracks.roleName,
+        department: jobTracks.department,
+        preferenceRank: jobTracks.preferenceRank,
       lifecycle: jobTracks.lifecycle,
       submittedAt: jobTracks.submittedAt,
       endedAt: jobTracks.endedAt,
@@ -169,7 +180,7 @@ async function readJobTrackDetail(
       payload: events.payload,
     }).from(events)
       .where(and(eq(events.userId, userId), eq(events.jobTrackId, jobTrackId)))
-      .orderBy(desc(events.occurredAt)),
+      .orderBy(desc(events.occurredAt), desc(events.id)),
     db.select({ id: resumes.id, name: resumes.name, assetId: resumes.assetId })
       .from(resumes).where(eq(resumes.userId, userId)).orderBy(desc(resumes.createdAt)),
     db.select({ id: assets.id, originalName: assets.originalName, mimeType: assets.mimeType })
@@ -206,7 +217,8 @@ async function readJobTrackDetail(
     jobTrack: {
       id: job.id,
       companyName: job.companyName,
-      roleName: job.roleName,
+      roleName: job.roleName, department: job.department,
+      preferenceRank: job.preferenceRank ?? null,
       lifecycle: job.lifecycle,
       submittedAt: job.submittedAt?.toISOString() ?? null,
       endedAt: job.endedAt?.toISOString() ?? null,
@@ -225,6 +237,7 @@ async function readJobTrackDetail(
       id: row.id,
       jobTrackId: row.jobTrackId,
       kind: row.kind,
+      assessmentUrl: row.assessmentUrl,
       title: row.title,
       timing: row.timingType === "deadline"
         ? { type: "deadline", deadlineAt: requireDate(row.deadlineAt).toISOString() }
@@ -239,8 +252,7 @@ async function readJobTrackDetail(
       sequenceNo: row.sequenceNo,
       roundLabel: row.roundLabel,
       interviewType: row.interviewType,
-      startAt: row.startAt.toISOString(),
-      endAt: row.endAt.toISOString(),
+      timing: interviewTimingFromRow(row),
       meetingUrl: row.meetingUrl,
       notes: row.notes,
       status: row.status,
@@ -257,7 +269,7 @@ async function readJobTrackDetail(
       assessmentId: row.assessmentId,
       kind: row.kind,
       title: row.title,
-      deadlineAt: row.deadlineAt?.toISOString() ?? null,
+      deadlineAt: row.deadlineAt?.toISOString() ?? null, startAt: row.startAt?.toISOString() ?? null, endAt: row.endAt?.toISOString() ?? null,
       completedAt: row.completedAt?.toISOString() ?? null,
       cancelledAt: row.cancelledAt?.toISOString() ?? null,
     })),
@@ -282,19 +294,24 @@ async function readJobTracks(
   loaders: ReturnType<typeof createLoaders>,
   userId: string,
   lifecycle?: "planned" | "active" | "ended",
+  now = new Date(),
+  waitingThreshold = 5,
 ): Promise<JobTrackListView> {
   const conditions = [eq(jobTracks.userId, userId)];
   if (lifecycle) conditions.push(eq(jobTracks.lifecycle, lifecycle));
-  const [rows, countsRows, assessmentRows, interviewRows, taskRows, imageJobRows] = await Promise.all([
+  const [rows, countsRows, assessmentRows, interviewRows, taskRows, imageJobRows, latestEvents, resumeRows] = await Promise.all([
     db.select({
       id: jobTracks.id,
       companyName: jobTracks.companyName,
       roleName: jobTracks.roleName,
+        department: jobTracks.department,
+        preferenceRank: jobTracks.preferenceRank,
       lifecycle: jobTracks.lifecycle,
       submittedAt: jobTracks.submittedAt,
       endedAt: jobTracks.endedAt,
       endReason: jobTracks.endReason,
       resumeId: jobTracks.resumeId,
+      jobUrl: jobTracks.jobUrl,
       descriptionText: jobDescriptions.textContent,
       lastProgressAt: max(events.occurredAt),
       version: jobTracks.version,
@@ -315,23 +332,35 @@ async function readJobTracks(
       .innerJoin(jobDescriptions, eq(jobDescriptions.id, assetLinks.ownerId))
       .innerJoin(jobTracks, eq(jobTracks.id, jobDescriptions.jobTrackId))
       .where(and(eq(assetLinks.ownerType, "job_description"), eq(jobTracks.userId, userId), eq(assets.userId, userId))),
+    db.selectDistinctOn([events.jobTrackId], { jobTrackId: events.jobTrackId, kind: events.kind, payload: events.payload, occurredAt: events.occurredAt }).from(events).where(eq(events.userId, userId)).orderBy(events.jobTrackId, desc(events.occurredAt), desc(events.id)),
+    db.select({ id: resumes.id, name: resumes.name, assetId: resumes.assetId }).from(resumes).where(eq(resumes.userId, userId)),
   ]);
   const counts = { planned: 0, active: 0, ended: 0 };
   for (const row of countsRows) counts[row.lifecycle] = row.count;
-  const now = new Date();
+  const latestByJob = new Map(latestEvents.map(event => [event.jobTrackId, event]));
   const jobsWithDescriptionImages = new Set(imageJobRows.map((row) => row.jobTrackId));
   const items = rows.map((row) => {
-    const status = deriveJobTrackStatus(buildJobTrackFacts(row, assessmentRows, interviewRows, taskRows), now);
+    const status = deriveJobTrackStatus(buildJobTrackFacts(row, assessmentRows, interviewRows, taskRows), now, waitingThreshold);
     const currentNext = deriveJobTrackCurrentNext(buildCurrentNextFacts(row, assessmentRows, interviewRows, taskRows), now);
     return {
       id: row.id,
       companyName: row.companyName,
-      roleName: row.roleName,
+      roleName: row.roleName, department: row.department,
+      preferenceRank: row.preferenceRank ?? null,
       lifecycle: row.lifecycle,
       submittedAt: row.submittedAt?.toISOString() ?? null,
       endedAt: row.endedAt?.toISOString() ?? null,
       endReason: row.endReason,
       hasJobDescription: Boolean(row.descriptionText || jobsWithDescriptionImages.has(row.id)),
+      jobUrl: row.jobUrl,
+      selectedResume: resumeRows.find(resume => resume.id === row.resumeId) ?? null,
+      milestones: [
+        ...assessmentRows.filter(item => item.jobTrackId === row.id).map(item => ({ id: item.id, title: item.title, href: '/jobs/' + row.id + '#assessment-' + item.id, status: ({ pending: '待完成', completed: '已完成', cancelled: '已取消' })[item.status], at: (item.startAt ?? item.deadlineAt)?.toISOString() ?? null, endAt: item.endAt?.toISOString() ?? null, timingType: item.startAt ? 'fixed_slot' as const : 'deadline' as const })),
+        ...interviewRows.filter(item => item.jobTrackId === row.id).map(item => ({ id: item.id, title: item.roundLabel, href: '/interviews/' + item.id, status: item.status === 'cancelled' ? '已取消' : item.reviewedAt ? '已复盘' : item.occurredAt ? '已面试' : '已安排', at: (item.startAt ?? item.deadlineAt)?.toISOString() ?? null, endAt: item.endAt?.toISOString() ?? null, timingType: item.startAt ? 'fixed_slot' as const : 'deadline' as const })),
+      ].sort((a, b) => (b.at ?? '').localeCompare(a.at ?? '')),
+      pendingTasks: taskRows.filter(item => item.jobTrackId === row.id && item.kind !== 'assessment' && !item.completedAt && !item.cancelledAt).map(item => ({ id: item.id, title: item.title, at: (item.startAt ?? item.deadlineAt)?.toISOString() ?? null, endAt: item.endAt?.toISOString() ?? null, timingType: item.startAt ? 'fixed_slot' as const : 'deadline' as const })),
+      latestEvent: latestByJob.has(row.id) ? { ...latestByJob.get(row.id)!, occurredAt: latestByJob.get(row.id)!.occurredAt.toISOString() } : null,
+      waitingDays: jobWaitingDays(buildJobTrackFacts(row, assessmentRows, interviewRows, taskRows), now),
       hasResume: Boolean(row.resumeId),
       lastProgressAt: row.lastProgressAt?.toISOString() ?? null,
       actionState: status.actionState,
@@ -369,8 +398,7 @@ function buildCurrentNextFacts(
       id: row.id,
       roundLabel: row.roundLabel,
       interviewType: row.interviewType,
-      startAt: row.startAt.toISOString(),
-      endAt: row.endAt.toISOString(),
+      timing: interviewTimingFromRow(row),
       status: row.status,
       occurredAt: row.occurredAt?.toISOString() ?? null,
       reviewedAt: row.reviewedAt?.toISOString() ?? null,
@@ -380,7 +408,7 @@ function buildCurrentNextFacts(
       interviewId: row.interviewId,
       kind: row.kind,
       title: row.title,
-      deadlineAt: row.deadlineAt?.toISOString() ?? null,
+      deadlineAt: row.deadlineAt?.toISOString() ?? null, startAt: row.startAt?.toISOString() ?? null, endAt: row.endAt?.toISOString() ?? null,
       completedAt: row.completedAt?.toISOString() ?? null,
       cancelledAt: row.cancelledAt?.toISOString() ?? null,
     })),
@@ -392,19 +420,18 @@ async function readDashboard(
   loaders: ReturnType<typeof createLoaders>,
   userId: string,
   now: Date,
+  waitingThreshold = 5,
 ): Promise<DashboardView> {
   const [jobView, assessmentRows, interviewRows, taskRows] = await Promise.all([
-    readJobTracks(db, loaders, userId),
+    readJobTracks(db, loaders, userId, undefined, now, waitingThreshold),
     loaders.assessments(userId),
     loaders.interviews(userId),
     loaders.tasks(userId),
   ]);
   const todayEnd = endOfTodayInShanghai(now);
-  const tomorrowEnd = new Date(todayEnd.getTime() + 24 * 60 * 60 * 1000);
-  const dueTaskRows = taskRows.filter((row) => row.kind !== "assessment" && !row.completedAt && !row.cancelledAt && row.deadlineAt && row.deadlineAt <= todayEnd);
-  const dueTaskIds = new Set(dueTaskRows.map((row) => row.id));
-  const imminentPreparationTasks = findImminentInterviewPreparationTasks(taskRows, interviewRows, now, tomorrowEnd)
-    .filter(({ task }) => !dueTaskIds.has(task.id));
+  const todayStart = new Date(todayEnd.getTime() + 1 - 24 * 60 * 60 * 1000);
+  const tomorrowStart = new Date(todayEnd.getTime() + 1);
+  const dueTaskRows = taskRows.filter(row => row.kind !== "assessment" && !row.completedAt && !row.cancelledAt);
   const todayItems = sortDashboardActionItems([
     ...assessmentRows.filter((row) => row.status === "pending")
       .map((row) => ({ row, dueAt: row.timingType === "deadline" ? row.deadlineAt : row.startAt }))
@@ -415,61 +442,60 @@ async function readDashboard(
         timeSource: row.timingType === "deadline" ? "deadline" as const : "start" as const,
         jobTrackId: row.jobTrackId,
         companyName: row.companyName,
-        roleName: row.roleName,
+        roleName: row.roleName, department: row.department,
         title: row.title,
         dueAt: dueAt.toISOString(),
-        overdue: dueAt < now,
+        externalUrl: row.assessmentUrl,
+        overdue: (row.timingType === "fixed_slot" ? row.endAt ?? dueAt : dueAt) < now,
+        endAt: row.endAt?.toISOString() ?? null,
       })),
-    ...dueTaskRows.map((row) => ({
+    ...dueTaskRows.filter(row => !(row.startAt ?? row.deadlineAt) || (row.startAt ?? row.deadlineAt)! <= todayEnd).map((row) => ({
         id: row.id,
         sourceType: "task" as const,
         taskKind: row.kind,
         interviewId: row.interviewId,
-        timeSource: "deadline" as const,
+        timeSource: row.startAt ? "start" as const : "deadline" as const,
+        endAt: row.endAt?.toISOString() ?? null,
         jobTrackId: row.jobTrackId,
         companyName: row.companyName,
-        roleName: row.roleName,
+        roleName: row.roleName, department: row.department,
         title: row.title,
-        dueAt: (row.deadlineAt as Date).toISOString(),
-        overdue: (row.deadlineAt as Date) < now,
+        dueAt: (row.startAt ?? row.deadlineAt)?.toISOString() ?? null,
+        overdue: Boolean((row.endAt ?? row.deadlineAt) && (row.endAt ?? row.deadlineAt)! < now),
       })),
-    ...imminentPreparationTasks.map(({ task: row, dueAt }) => ({
-      id: row.id,
-      sourceType: "task" as const,
-      taskKind: row.kind,
-      interviewId: row.interviewId,
-      timeSource: "interview" as const,
-      jobTrackId: row.jobTrackId,
-      companyName: row.companyName,
-      roleName: row.roleName,
-      title: row.title,
-      dueAt,
-      overdue: false,
+    ...interviewRows.filter(row => row.status === "scheduled" && !row.occurredAt && row.timingType === "fixed_slot" && requireDate(row.startAt) <= todayEnd && requireDate(row.endAt) > now && requireDate(row.endAt) > todayStart).map(row => ({
+      id: row.id, sourceType: "interview" as const, jobTrackId: row.jobTrackId, companyName: row.companyName, roleName: row.roleName, department: row.department,
+      title: row.roundLabel, dueAt: requireDate(row.startAt).toISOString(), endAt: requireDate(row.endAt).toISOString(), timeSource: "start" as const, externalUrl: row.meetingUrl, overdue: false,
     })),
-    ...interviewRows.filter((row) => row.status === "scheduled" && row.startAt <= now && !row.reviewedAt)
+    ...interviewRows.filter(row => row.status === "scheduled" && !row.occurredAt && row.timingType === "deadline" && requireDate(row.deadlineAt) <= todayEnd).map(row => ({
+      id: row.id, sourceType: "interview" as const, jobTrackId: row.jobTrackId, companyName: row.companyName, roleName: row.roleName, department: row.department,
+      title: row.roundLabel, dueAt: requireDate(row.deadlineAt).toISOString(), timeSource: "deadline" as const, externalUrl: row.meetingUrl, overdue: requireDate(row.deadlineAt) < now,
+    })),
+    ...interviewRows.filter((row) => row.status === "scheduled" && interviewEndFromRow(row) <= now && !row.reviewedAt && (row.timingType === "fixed_slot" || Boolean(row.occurredAt)))
       .map((row) => ({
         id: row.id,
         sourceType: "interview_review" as const,
         jobTrackId: row.jobTrackId,
         companyName: row.companyName,
-        roleName: row.roleName,
+        roleName: row.roleName, department: row.department,
         title: `复盘${row.roundLabel}`,
-        dueAt: row.startAt.toISOString(),
-        overdue: false,
+        dueAt: interviewReviewDeadline(interviewEndFromRow(row)).toISOString(),
+        timeSource: "deadline" as const,
+        overdue: interviewReviewDeadline(interviewEndFromRow(row)) < now,
       })),
   ] satisfies DashboardActionItem[]);
-  const upcomingEnd = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+  const upcomingEnd = new Date(tomorrowStart.getTime() + 7 * 24 * 60 * 60 * 1000);
   return {
     type: "dashboard",
     counts: jobView.counts,
     todayItems,
-    upcomingItems: buildCalendarItems(assessmentRows, interviewRows, taskRows, now, upcomingEnd),
+    upcomingItems: buildCalendarItems(assessmentRows, interviewRows, taskRows, tomorrowStart, upcomingEnd).filter(item => !todayItems.some(today => today.id === item.id && today.sourceType === item.sourceType)),
     attentionJobs: jobView.items.filter((job) => job.attentionFlags.length > 0),
   };
 }
 
 function buildJobTrackFacts(
-  job: { id: string; lifecycle: "planned" | "active" | "ended"; submittedAt: Date | null },
+  job: { id: string; lifecycle: "planned" | "active" | "ended"; submittedAt: Date | null; lastProgressAt?: Date | null },
   assessmentRows: AssessmentRow[],
   interviewRows: InterviewRow[],
   taskRows: TaskRow[],
@@ -477,6 +503,7 @@ function buildJobTrackFacts(
   return {
     lifecycle: job.lifecycle,
     submittedAt: job.submittedAt?.toISOString() ?? null,
+    lastProgressAt: job.lastProgressAt?.toISOString() ?? null,
     assessments: assessmentRows.filter((row) => row.jobTrackId === job.id).map((row) => ({
       id: row.id,
       status: row.status,
@@ -488,14 +515,14 @@ function buildJobTrackFacts(
     interviews: interviewRows.filter((row) => row.jobTrackId === job.id).map((row) => ({
       id: row.id,
       status: row.status,
-      startAt: row.startAt.toISOString(),
+      timing: interviewTimingFromRow(row),
       occurredAt: row.occurredAt?.toISOString() ?? null,
       reviewedAt: row.reviewedAt?.toISOString() ?? null,
     })),
     tasks: taskRows.filter((row) => row.jobTrackId === job.id).map((row) => ({
       id: row.id,
       kind: row.kind,
-      deadlineAt: row.deadlineAt?.toISOString() ?? null,
+      deadlineAt: row.deadlineAt?.toISOString() ?? null, startAt: row.startAt?.toISOString() ?? null, endAt: row.endAt?.toISOString() ?? null,
       completedAt: row.completedAt?.toISOString() ?? null,
       cancelledAt: row.cancelledAt?.toISOString() ?? null,
       interviewId: row.interviewId,
@@ -516,11 +543,12 @@ function buildCalendarItems(
       sourceType: "interview" as const,
       jobTrackId: row.jobTrackId,
       companyName: row.companyName,
-      roleName: row.roleName,
-      title: `${row.roundLabel} · ${row.interviewType}`,
-      startAt: row.startAt.toISOString(),
-      endAt: row.endAt.toISOString(),
-      isDeadline: false,
+      roleName: row.roleName, department: row.department,
+      title: [row.roundLabel, row.interviewType].filter(Boolean).join(" · "),
+      externalUrl: row.meetingUrl,
+      startAt: interviewStartFromRow(row).toISOString(),
+      endAt: row.timingType === "fixed_slot" ? requireDate(row.endAt).toISOString() : null,
+      isDeadline: row.timingType === "deadline",
       hasConflict: false,
     })),
     ...assessmentRows.filter((row) => row.status === "pending").map((row) => ({
@@ -528,28 +556,29 @@ function buildCalendarItems(
       sourceType: "assessment" as const,
       jobTrackId: row.jobTrackId,
       companyName: row.companyName,
-      roleName: row.roleName,
+      roleName: row.roleName, department: row.department,
       title: row.title,
+      externalUrl: row.assessmentUrl,
       startAt: requireDate(row.timingType === "deadline" ? row.deadlineAt : row.startAt).toISOString(),
       endAt: row.timingType === "fixed_slot" ? requireDate(row.endAt).toISOString() : null,
       isDeadline: row.timingType === "deadline",
       hasConflict: false,
     })),
-    ...taskRows.filter((row) => row.kind !== "assessment" && !row.completedAt && !row.cancelledAt && row.deadlineAt).map((row) => ({
+    ...taskRows.filter((row) => row.kind !== "assessment" && !row.completedAt && !row.cancelledAt && (row.deadlineAt || row.startAt)).map((row) => ({
       id: row.id,
       sourceType: "task" as const,
       jobTrackId: row.jobTrackId,
       companyName: row.companyName,
-      roleName: row.roleName,
+      roleName: row.roleName, department: row.department,
       title: row.title,
-      startAt: (row.deadlineAt as Date).toISOString(),
-      endAt: null,
-      isDeadline: true,
+      startAt: (row.startAt ?? row.deadlineAt as Date).toISOString(),
+      endAt: row.endAt?.toISOString() ?? null,
+      isDeadline: !row.startAt,
       hasConflict: false,
     })),
   ].filter((item) => {
     const itemTime = new Date(item.startAt);
-    return itemTime >= startAt && itemTime < endAt;
+    return itemTime < endAt && (itemTime >= startAt || (item.endAt !== null && new Date(item.endAt) > startAt));
   }).sort((left, right) => left.startAt.localeCompare(right.startAt));
   return markCalendarConflicts(items);
 }
@@ -567,6 +596,20 @@ function parseBoundary(value: string, field: string): Date {
 function requireDate(value: Date | null): Date {
   if (!value) throw new Error("INTERNAL_ERROR: timing date is missing");
   return value;
+}
+
+function interviewTimingFromRow(row: InterviewRow) {
+  return row.timingType === "deadline"
+    ? { type: "deadline" as const, deadlineAt: requireDate(row.deadlineAt).toISOString() }
+    : { type: "fixed_slot" as const, startAt: requireDate(row.startAt).toISOString(), endAt: requireDate(row.endAt).toISOString() };
+}
+
+function interviewStartFromRow(row: InterviewRow): Date {
+  return requireDate(row.timingType === "deadline" ? row.deadlineAt : row.startAt);
+}
+
+function interviewEndFromRow(row: InterviewRow): Date {
+  return requireDate(row.timingType === "deadline" ? row.deadlineAt : row.endAt);
 }
 
 function endOfTodayInShanghai(now: Date): Date {

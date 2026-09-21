@@ -1,12 +1,15 @@
 "use server";
 
+import { and, eq, sql } from "drizzle-orm";
+import { actionReceipts, jobTracks } from "@/db/schema";
+import { getDatabaseRuntime } from "@/db/runtime";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { discardStagedJobDescriptionImages, stageJobDescriptionImages, type StagedJobDescriptionImage } from "@/modules/job-description-assets/service";
 import { getJobWorkflow } from "@/modules/job-workflow/composition";
 import { resolveResumeSelection } from "@/modules/resume-library/form-selection";
 import { getCurrentActor } from "@/shared/actor/current-actor";
 import { logServerError } from "@/shared/logging/server-error";
+import { validateCreateJobForm, type JobFieldErrors } from "./create-job-validation";
 
 const createJobTrackSchema = z.object({
   idempotencyKey: z.string().min(8),
@@ -21,7 +24,22 @@ const createJobTrackSchema = z.object({
 export type CreateJobTrackFormState = {
   error: string | null;
   success: string | null;
+  fieldErrors?: JobFieldErrors;
 };
+
+async function preferenceErrors(userId: string, data: FormData): Promise<JobFieldErrors> {
+  const rows = await getDatabaseRuntime().db.select({ rank: jobTracks.preferenceRank }).from(jobTracks).where(and(
+    eq(jobTracks.userId, userId),
+    sql`lower(btrim(${jobTracks.companyName})) = ${String(data.get("companyName") ?? "").trim().toLowerCase()}`,
+  ));
+  const occupied = new Set(rows.map(row => row.rank));
+  const errors: JobFieldErrors = {};
+  for (const key of data.getAll("roleKeys").map(String)) {
+    const name = `roles.${key}.preferenceRank`;
+    if (data.get(name) && occupied.has(Number(data.get(name)))) errors[name] = "该公司已有岗位使用此志愿，请选择其他志愿";
+  }
+  return errors;
+}
 
 export async function quickImportJobTracksAction(
   _previousState: CreateJobTrackFormState,
@@ -58,67 +76,50 @@ export async function createJobTrackAction(
   _previousState: CreateJobTrackFormState,
   formData: FormData,
 ): Promise<CreateJobTrackFormState> {
-  const files = formData.getAll("jobDescriptionImages").filter((item): item is File => item instanceof File && item.size > 0);
-  const parsed = createJobTrackSchema.safeParse({
-    idempotencyKey: formData.get("idempotencyKey"),
-    creationMode: formData.get("creationMode"),
-    companyName: formData.get("companyName"),
-    roleName: formData.get("roleName"),
-    jobDescription: formData.get("jobDescription"),
-    jobUrl: formData.get("jobUrl"),
-    submittedAt: String(formData.get("submittedAt") ?? "") || undefined,
-  });
-
-  if (!parsed.success) {
-    return { error: parsed.error.issues[0]?.message ?? "请检查输入内容", success: null };
-  }
-  if (!parsed.data.jobDescription && files.length === 0) return { error: "请粘贴 JD 文本或上传 JD 图片。", success: null };
-  if (parsed.data.creationMode === "active" && !parsed.data.submittedAt) return { error: "新增已投递时请填写投递时间。", success: null };
-
-  let staged: StagedJobDescriptionImage[] = [];
-  let jobCreated = false;
+  const actor = await getCurrentActor();
+  let currentField: string | undefined;
   try {
-    if (files.length) staged = await stageJobDescriptionImages({ userId: (await getCurrentActor()).userId, files });
-    const actor = await getCurrentActor();
-    const resumeId = parsed.data.creationMode === "active"
-      ? await resolveResumeSelection({ userId: actor.userId, formData })
-      : null;
-    const created = await getJobWorkflow().execute(
-      {
-        type: "create_job_track",
-        idempotencyKey: parsed.data.idempotencyKey,
-        companyName: parsed.data.companyName,
-        roleName: parsed.data.roleName,
-        jobDescription: { text: parsed.data.jobDescription || undefined, imageAssetIds: staged.map((asset) => asset.id) },
-        jobUrl: parsed.data.jobUrl || undefined,
-      },
-      actor,
-    );
-    jobCreated = true;
-    if (parsed.data.creationMode === "active") {
-      await getJobWorkflow().execute({
-        type: "submit_application",
-        idempotencyKey: `${parsed.data.idempotencyKey}:submit`,
-        jobTrackId: created.jobTrack.id,
-        resumeId: z.uuid().parse(resumeId),
-        submittedAt: toIso(parsed.data.submittedAt ?? ""),
-      }, actor);
+    const creationMode = z.enum(["planned", "active"]).parse(formData.get("creationMode"));
+    const idempotencyKey = z.string().min(8).parse(formData.get("idempotencyKey"));
+    const [receipt] = await getDatabaseRuntime().db.select({ id: actionReceipts.id }).from(actionReceipts).where(and(eq(actionReceipts.userId, actor.userId), eq(actionReceipts.idempotencyKey, idempotencyKey)));
+    if (receipt) return { error: null, success: "岗位已全部保存。" };
+    const keys = formData.getAll("roleKeys").map(String);
+    if (!keys.length || keys.length > 30 || new Set(keys).size !== keys.length) return { error: "请添加 1–30 个岗位。", success: null };
+    const fieldErrors = validateCreateJobForm(formData);
+    if (Object.keys(fieldErrors).length) return { error: "请修改标红的表单项后保存。", success: null, fieldErrors };
+    const companyName = z.string().trim().min(1).max(255).parse(formData.get("companyName"));
+    const conflicts = await preferenceErrors(actor.userId, formData);
+    if (Object.keys(conflicts).length) return { error: "请修改标红的志愿后保存。", success: null, fieldErrors: conflicts };
+    const ranks = new Set<number>();
+    const parsedRoles = keys.map(key => {
+      const prefix = "roles." + key + ".";
+      const fields = new FormData();
+      for (const [name, value] of formData.entries()) if (name.startsWith(prefix)) fields.append(name.slice(prefix.length), value);
+      const parsed = createJobTrackSchema.parse({ idempotencyKey, creationMode, companyName, roleName: fields.get("roleName"), jobDescription: fields.get("jobDescription") ?? "", jobUrl: fields.get("jobUrl") });
+      const preferenceRank = fields.get("preferenceRank") ? z.coerce.number().int().positive().parse(fields.get("preferenceRank")) : null;
+      if (preferenceRank !== null && ranks.has(preferenceRank)) throw new Error("CONFLICT: 同公司志愿不能重复");
+      if (preferenceRank !== null) ranks.add(preferenceRank);
+      return { parsed, fields, preferenceRank, prefix };
+    });
+    const entries = [];
+    for (const role of parsedRoles) {
+      currentField = role.prefix + (role.fields.get("resumeMode") === "existing" ? "resumeId" : "resumeFile");
+      const resumeId = creationMode === "active" ? await resolveResumeSelection({ userId: actor.userId, formData: role.fields }) : undefined;
+      entries.push({ department: z.string().trim().max(255).parse(role.fields.get("department") ?? "") || undefined, roleName: role.parsed.roleName, preferenceRank: role.preferenceRank, jobUrl: role.parsed.jobUrl || undefined, jobDescription: { text: role.parsed.jobDescription || undefined, imageAssetIds: [] }, resumeId });
     }
+    currentField = undefined;
+    await getJobWorkflow().execute({ type: "create_company_jobs", idempotencyKey, companyName, lifecycle: creationMode, entries }, actor);
+    revalidatePath("/"); revalidatePath("/jobs"); revalidatePath("/faq");
+    return { error: null, success: "岗位已全部保存。" };
   } catch (error) {
-    if (!jobCreated) await discardStagedJobDescriptionImages((await getCurrentActor()).userId, staged).catch(() => undefined);
-    logServerError("Failed to create job track", error);
-    return { error: jobCreated ? "岗位已保存为待投递，但记录投递失败；请进入详情页补记投递。" : "保存失败，请检查简历、经历和 JD 内容。", success: null };
+    logServerError("Failed to create company jobs", error);
+    if (error instanceof Error && error.message.includes("同公司志愿不能重复")) {
+      return { error: "同公司志愿不能重复，请修改后保存。", success: null, fieldErrors: await preferenceErrors(actor.userId, formData).catch(() => ({})) };
+    }
+    const fieldErrors: JobFieldErrors = {};
+    if (currentField && (error instanceof z.ZodError || error instanceof Error && /VALIDATION_ERROR|NOT_FOUND/.test(error.message))) {
+      fieldErrors[currentField] = "请检查此项内容，重新选择有效的文件或记录";
+    }
+    return { error: "保存失败，填写内容已保留，请重试。已上传的新简历可在简历库中继续使用。", success: null, fieldErrors };
   }
-
-  revalidatePath("/");
-  revalidatePath("/jobs");
-  revalidatePath("/faq");
-  return { error: null, success: parsed.data.creationMode === "planned" ? "待投递岗位已创建。" : "已投递岗位已创建。" };
-}
-
-function toIso(value: string) {
-  const normalized = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value) ? `${value}:00+08:00` : value;
-  const date = new Date(normalized);
-  if (Number.isNaN(date.getTime())) throw new Error("VALIDATION_ERROR: invalid local datetime");
-  return date.toISOString();
 }

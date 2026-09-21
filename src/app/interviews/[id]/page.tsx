@@ -1,12 +1,14 @@
+import { ActionDialog } from "@/components/action-dialog";
 import { randomUUID } from "node:crypto";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, FileText, Video } from "lucide-react";
 import { FaqBatchForm, FaqEditor } from "@/app/faq/knowledge-forms";
 import {
+  TaskEditor,
+  DeleteRecordButton,
   InterviewPrepTaskForm,
   InterviewScheduleEditor,
-  InterviewTranscriptForm,
   StatusActionButton,
 } from "@/app/jobs/[id]/job-actions-panel";
 import { getInterviewKnowledgeDetail } from "@/modules/interview-knowledge/queries";
@@ -25,22 +27,22 @@ export default async function InterviewDetailPage({ params }: { params: Promise<
     throw error;
   });
   const interview = view.interview;
-  const reviewDue = interview.status === "scheduled" && new Date(interview.startAt) <= new Date() && !interview.reviewedAt;
+  const reviewDue = interview.status === "scheduled" && new Date(timingEnd(interview.timing)) <= new Date() && (interview.timing.type === "fixed_slot" || Boolean(interview.occurredAt)) && !interview.reviewedAt;
 
   return <main className="page-stack">
     <Link className="back-link" href={`/jobs/${interview.jobTrackId}`}><ArrowLeft size={16} />返回岗位</Link>
     <header className="page-heading">
-      <div><p className="eyebrow">面试准备与复盘</p><h1>{interview.roundLabel} · {interview.interviewType}</h1><p className="page-description">{interview.companyName} · {interview.roleName} · {formatDateTime(interview.startAt)}</p></div>
-      {interview.meetingUrl && <a className="primary-button" href={interview.meetingUrl} rel="noreferrer" target="_blank"><Video size={17} />进入会议</a>}
+      <div><p className="eyebrow">面试准备与复盘</p><h1>{[interview.roundLabel, interview.interviewType].filter(Boolean).join(" · ")}</h1><p className="page-description">{interview.companyName}{interview.department ? ` · ${interview.department}` : ""} · {interview.roleName} · {formatInterviewTiming(interview.timing)}</p></div>
+      <div className="section-actions">{interview.meetingUrl && <a className="primary-button" href={interview.meetingUrl} rel="noreferrer" target="_blank"><Video size={17} />进入会议</a>}{interview.status === "scheduled" && <ActionDialog label="修改时间"><InterviewScheduleEditor jobTrackId={interview.jobTrackId} interviewId={interview.id} token={randomUUID()} timing={interview.timing} /></ActionDialog>}</div>
     </header>
 
-    <div className="detail-layout">
+    <div className="interview-detail-layout">
       <div className="detail-main">
         <section className="surface-card detail-section">
           <div className="section-title-row"><div><p className="eyebrow">投递上下文</p><h2>岗位与简历</h2></div><FileText size={20} /></div>
           <div className="interview-context-grid">
             <article><span>投递简历</span>{interview.resumeAssetId ? <a href={`/api/assets/${interview.resumeAssetId}`} target="_blank" rel="noreferrer">{interview.resumeName ?? "打开简历"}</a> : <strong>未绑定简历</strong>}</article>
-            <article><span>面试时段</span><strong>{formatDateTime(interview.startAt)} – {formatTime(interview.endAt)}</strong></article>
+            <article><span>面试时间</span><strong>{formatInterviewTiming(interview.timing)}</strong></article>
             <article><span>复盘状态</span><strong>{interview.reviewedAt ? `已于 ${formatDateTime(interview.reviewedAt)} 完成` : reviewDue ? "待复盘" : "尚未到复盘时间"}</strong></article>
           </div>
           {interview.notes && <div className="interview-notes"><strong>面试备注</strong><p>{interview.notes}</p></div>}
@@ -48,9 +50,9 @@ export default async function InterviewDetailPage({ params }: { params: Promise<
         </section>
 
         <section className="surface-card detail-section">
-          <div className="section-title-row"><div><p className="eyebrow">本场准备</p><h2>面试待办</h2></div></div>
+          <div className="section-title-row"><div><p className="eyebrow">本场准备</p><h2>面试待办</h2></div>{interview.status === "scheduled" && !interview.occurredAt && <ActionDialog label="添加待办"><InterviewPrepTaskForm jobTrackId={interview.jobTrackId} interviewId={interview.id} token={randomUUID()} /></ActionDialog>}</div>
           <div className="milestone-list">
-            {view.tasks.map((task) => <article className="milestone-item" key={task.id}><div><strong>{task.title}</strong><p>{task.deadlineAt ? `截止 ${formatDateTime(task.deadlineAt)}` : "无截止时间"}</p></div><span className={`status-pill ${task.completedAt ? "completed" : task.cancelledAt ? "cancelled" : "pending"}`}>{task.completedAt ? "已完成" : task.cancelledAt ? "已取消" : "待完成"}</span>{!task.completedAt && !task.cancelledAt && <div className="milestone-actions"><StatusActionButton intent="complete_task" jobTrackId={interview.jobTrackId} subjectId={task.id} token={randomUUID()} label="完成" /><StatusActionButton intent="cancel_task" jobTrackId={interview.jobTrackId} subjectId={task.id} token={randomUUID()} label="取消" /></div>}</article>)}
+            {view.tasks.map((task) => <article className="milestone-item" id={`task-${task.id}`} key={task.id}><div><strong>{task.title}</strong><p>{task.startAt ? `${formatDateTime(task.startAt)} – ${formatDateTime(task.endAt!)}` : task.deadlineAt ? `截止 ${formatDateTime(task.deadlineAt)}` : "无截止时间"}</p>{!task.completedAt && !task.cancelledAt && <TaskEditor jobTrackId={interview.jobTrackId} task={{ ...task, interviewId: interview.id }} interviews={[{ id: interview.id, roundLabel: interview.roundLabel, interviewType: interview.interviewType }]} token={randomUUID()} />}</div><span className={`status-pill ${task.completedAt ? "completed" : task.cancelledAt ? "cancelled" : "pending"}`}>{task.completedAt ? "已完成" : task.cancelledAt ? "已取消" : "待完成"}</span>{!task.completedAt && !task.cancelledAt && <div className="milestone-actions"><StatusActionButton intent="complete_task" jobTrackId={interview.jobTrackId} subjectId={task.id} token={randomUUID()} label="完成" /><StatusActionButton intent="cancel_task" jobTrackId={interview.jobTrackId} subjectId={task.id} token={randomUUID()} label="取消" /></div>}<DeleteRecordButton kind="task" jobTrackId={interview.jobTrackId} subjectId={task.id} title={task.title} token={randomUUID()} /></article>)}
             {!view.tasks.length && <p className="detail-note">还没有为本场面试创建准备待办。</p>}
           </div>
         </section>
@@ -61,27 +63,20 @@ export default async function InterviewDetailPage({ params }: { params: Promise<
         </section>
 
         <section className="surface-card detail-section">
-          <div className="section-title-row"><div><p className="eyebrow">本场沉淀</p><h2>FAQ</h2></div></div>
+          <div className="section-title-row"><div><p className="eyebrow">本场沉淀</p><h2>FAQ</h2></div><ActionDialog label="导入 FAQ"><FaqBatchForm defaultInterviewId={interview.id} token={randomUUID()} interviews={[{ id: interview.id, companyName: interview.companyName, roleName: interview.roleName, roundLabel: interview.roundLabel }]} experiences={view.experiences} faqCategories={view.faqCategories} /></ActionDialog></div>
           <div className="faq-card-list">{view.faqs.map((faq) => {
             const settingsComplete = isFaqSettingsComplete(faq);
             const settingLabel = faq.experienceId ? faq.experienceName ?? "已绑定经历" : faq.category ?? "暂不设置";
             return <article className="faq-card" key={faq.id}><div className={settingsComplete ? "faq-card-meta" : "faq-card-meta incomplete"}><span>{settingLabel}</span><FaqFrequency count={faq.frequency} /></div><h3>{faq.question}</h3><p>{faq.answer || "暂未记录答案"}</p><FaqEditor faq={faq} experiences={view.experiences} faqCategories={view.faqCategories} incomplete={!settingsComplete} /></article>;
-          })}{!view.faqs.length && <p className="detail-note">面试后把整理好的 FAQ Blocks 粘贴到右侧。</p>}</div>
+          })}{!view.faqs.length && <p className="detail-note">点击“导入 FAQ”记录本场面试问题。</p>}</div>
         </section>
       </div>
 
-      <aside className="surface-card knowledge-tools">
-        {reviewDue && <div className="interview-review-callout"><div><strong>复盘完成了吗？</strong><p>保存 Transcript 或 FAQ 会自动确认面试已发生；整理结束后在这里关闭提醒。</p></div><StatusActionButton intent="complete_interview_review" jobTrackId={interview.jobTrackId} subjectId={interview.id} token={randomUUID()} label="完成复盘" /></div>}
-        {interview.status === "scheduled" && !interview.occurredAt && <InterviewPrepTaskForm jobTrackId={interview.jobTrackId} interviewId={interview.id} token={randomUUID()} />}
-        {interview.status === "scheduled" && <InterviewScheduleEditor jobTrackId={interview.jobTrackId} interviewId={interview.id} token={randomUUID()} startAt={toLocalInput(interview.startAt)} endAt={toLocalInput(interview.endAt)} />}
-        {interview.transcriptAssetId && <a className="transcript-file-link" href={`/api/assets/${interview.transcriptAssetId}`} target="_blank" rel="noreferrer">打开转录文件：{interview.transcriptAssetName ?? "Transcript"}</a>}
-        <InterviewTranscriptForm jobTrackId={interview.jobTrackId} interviewId={interview.id} token={randomUUID()} transcriptText={interview.transcriptText} />
-        <FaqBatchForm token={randomUUID()} interviews={[{ id: interview.id, companyName: interview.companyName, roleName: interview.roleName, roundLabel: interview.roundLabel }]} experiences={view.experiences} faqCategories={view.faqCategories} />
-      </aside>
     </div>
   </main>;
 }
 
 function formatDateTime(value: string) { return new Intl.DateTimeFormat("zh-CN", { timeZone: "Asia/Shanghai", year: "numeric", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(value)); }
 function formatTime(value: string) { return new Intl.DateTimeFormat("zh-CN", { timeZone: "Asia/Shanghai", hour: "2-digit", minute: "2-digit" }).format(new Date(value)); }
-function toLocalInput(value: string) { const date = new Date(new Date(value).getTime() + 8 * 60 * 60 * 1000); return date.toISOString().slice(0, 16); }
+function formatInterviewTiming(timing: import("@/modules/job-workflow/interface").InterviewTiming) { return timing.type === "deadline" ? `截止 ${formatDateTime(timing.deadlineAt)}` : `${formatDateTime(timing.startAt)} – ${formatTime(timing.endAt)}`; }
+function timingEnd(timing: import("@/modules/job-workflow/interface").InterviewTiming) { return timing.type === "deadline" ? timing.deadlineAt : timing.endAt; }

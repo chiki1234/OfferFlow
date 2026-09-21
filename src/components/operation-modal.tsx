@@ -1,19 +1,29 @@
 "use client";
 
-import { useEffect, useId, useRef } from "react";
+import { useEffect, useId, useRef, useSyncExternalStore } from "react";
+import { createPortal } from "react-dom";
 import { X } from "lucide-react";
+
+const subscribeToClient = () => () => {};
+const getClientSnapshot = () => true;
+const getServerSnapshot = () => false;
+const modalStack: symbol[] = [];
+let originalBodyOverflow = "";
 
 export function OperationModal({
   title,
   description,
   children,
   onClose,
+  size = "standard",
 }: {
   title: string;
   description?: string;
   children: React.ReactNode;
   onClose: () => void;
+  size?: "standard" | "wide";
 }) {
+  const isClient = useSyncExternalStore(subscribeToClient, getClientSnapshot, getServerSnapshot);
   const panelRef = useRef<HTMLDivElement>(null);
   const titleId = useId();
   const closeRef = useRef(onClose);
@@ -22,13 +32,17 @@ export function OperationModal({
   }, [onClose]);
 
   useEffect(() => {
-    const previousOverflow = document.body.style.overflow;
+    if (!isClient) return;
+    const modalId = Symbol("modal");
+    if (!modalStack.length) originalBodyOverflow = document.body.style.overflow;
+    modalStack.push(modalId);
     const previousFocus =
       document.activeElement instanceof HTMLElement
         ? document.activeElement
         : null;
     document.body.style.overflow = "hidden";
     const handleKeyDown = (event: KeyboardEvent) => {
+      if (modalStack.at(-1) !== modalId) return;
       if (event.key === "Escape") closeRef.current();
       if (event.key !== "Tab") return;
       const elements = Array.from(
@@ -64,13 +78,19 @@ export function OperationModal({
       ) ?? panelRef.current?.querySelector<HTMLElement>("button");
     focusTarget?.focus();
     return () => {
-      document.body.style.overflow = previousOverflow;
+      const index = modalStack.indexOf(modalId);
+      const wasTop = modalStack.at(-1) === modalId;
+      if (index >= 0) modalStack.splice(index, 1);
+      if (!modalStack.length) document.body.style.overflow = originalBodyOverflow;
       window.removeEventListener("keydown", handleKeyDown);
-      if (previousFocus?.isConnected) previousFocus.focus();
+      if (wasTop && previousFocus?.isConnected) previousFocus.focus();
     };
-  }, []);
+  }, [isClient]);
 
-  return (
+  if (!isClient) return null;
+
+  // Keep fixed positioning independent of transformed or clipped trigger cards.
+  return createPortal(
     <div
       className="modal-backdrop"
       onMouseDown={(event) => {
@@ -80,7 +100,7 @@ export function OperationModal({
       <div
         aria-modal="true"
         aria-labelledby={titleId}
-        className="operation-modal"
+        className={size === "wide" ? "operation-modal operation-modal-wide" : "operation-modal"}
         ref={panelRef}
         role="dialog"
         tabIndex={-1}
@@ -101,6 +121,7 @@ export function OperationModal({
         </header>
         <div className="modal-content">{children}</div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

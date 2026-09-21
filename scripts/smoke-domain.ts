@@ -81,8 +81,7 @@ try {
     sequenceNo: 1,
     roundLabel: "一面",
     interviewType: "技术面",
-    startAt: isoOffset(now, -3),
-    endAt: isoOffset(now, -2),
+    timing: { type: "fixed_slot", startAt: isoOffset(now, -3), endAt: isoOffset(now, -2) },
     receivedAt: isoOffset(now, -36),
   }, actor);
   const transcript = await stageTranscriptAsset({
@@ -125,8 +124,7 @@ try {
     sequenceNo: 2,
     roundLabel: "二面",
     interviewType: "视频面试",
-    startAt: isoOffset(now, 20),
-    endAt: isoOffset(now, 21),
+    timing: { type: "fixed_slot", startAt: isoOffset(now, 20), endAt: isoOffset(now, 21) },
     receivedAt: now.toISOString(),
   }, actor);
   const preparation = await workflow.execute({

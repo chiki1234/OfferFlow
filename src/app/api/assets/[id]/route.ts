@@ -23,7 +23,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
         ...privateResponseHeaders,
         "Content-Type": asset.mimeType,
         "Content-Length": String(asset.sizeBytes),
-        "Content-Disposition": `inline; filename*=UTF-8''${encodeURIComponent(asset.originalName)}`,
+        "Content-Disposition": `${new URL(_request.url).searchParams.get("download") === "1" ? "attachment" : "inline"}; filename*=UTF-8''${encodeURIComponent(asset.originalName)}`,
       },
     });
   } catch {

@@ -35,6 +35,10 @@ export const assessmentStatus = pgEnum("assessment_status", [
   "cancelled",
 ]);
 export const interviewStatus = pgEnum("interview_status", ["scheduled", "cancelled"]);
+export const interviewTimingType = pgEnum("interview_timing_type", [
+  "deadline",
+  "fixed_slot",
+]);
 export const faqKind = pgEnum("faq_kind", ["experience", "general"]);
 export const taskKind = pgEnum("task_kind", ["generic", "interview_prep", "assessment"]);
 export const eventSubjectType = pgEnum("event_subject_type", [
@@ -214,6 +218,8 @@ export const jobTracks = pgTable(
       .references(() => users.id, { onDelete: "cascade" }),
     companyName: varchar("company_name", { length: 255 }).notNull(),
     roleName: varchar("role_name", { length: 255 }).notNull(),
+    department: varchar("department", { length: 255 }),
+    preferenceRank: integer("preference_rank"),
     jobUrl: text("job_url"),
     lifecycle: jobLifecycle("lifecycle").notNull().default("planned"),
     submittedAt: timestamp("submitted_at", { withTimezone: true }),
@@ -225,6 +231,8 @@ export const jobTracks = pgTable(
     ...timestamps,
   },
   (table) => [
+    check("job_tracks_preference_positive", sql`${table.preferenceRank} > 0`),
+    uniqueIndex("job_tracks_company_preference_unique").on(table.userId, sql`lower(btrim(${table.companyName}))`, table.preferenceRank),
     index("job_tracks_user_lifecycle_updated_idx").on(
       table.userId,
       table.lifecycle,
@@ -254,6 +262,7 @@ export const assessments = pgTable(
       .notNull()
       .references(() => jobTracks.id, { onDelete: "cascade" }),
     kind: assessmentKind("kind").notNull(),
+    assessmentUrl: text("assessment_url"),
     title: varchar("title", { length: 255 }).notNull(),
     timingType: assessmentTimingType("timing_type").notNull(),
     deadlineAt: timestamp("deadline_at", { withTimezone: true }),
@@ -284,8 +293,10 @@ export const interviews = pgTable(
     sequenceNo: integer("sequence_no"),
     roundLabel: varchar("round_label", { length: 255 }).notNull(),
     interviewType: varchar("interview_type", { length: 255 }).notNull(),
-    startAt: timestamp("start_at", { withTimezone: true }).notNull(),
-    endAt: timestamp("end_at", { withTimezone: true }).notNull(),
+    timingType: interviewTimingType("timing_type").notNull().default("fixed_slot"),
+    deadlineAt: timestamp("deadline_at", { withTimezone: true }),
+    startAt: timestamp("start_at", { withTimezone: true }),
+    endAt: timestamp("end_at", { withTimezone: true }),
     meetingUrl: text("meeting_url"),
     notes: text("notes"),
     status: interviewStatus("status").notNull().default("scheduled"),
@@ -300,6 +311,10 @@ export const interviews = pgTable(
     ...timestamps,
   },
   (table) => [
+    check(
+      "interviews_time_consistency",
+      sql`(${table.timingType} = 'deadline' AND ${table.deadlineAt} IS NOT NULL AND ${table.startAt} IS NULL AND ${table.endAt} IS NULL) OR (${table.timingType} = 'fixed_slot' AND ${table.deadlineAt} IS NULL AND ${table.startAt} IS NOT NULL AND ${table.endAt} IS NOT NULL AND ${table.endAt} > ${table.startAt})`,
+    ),
     index("interviews_job_status_start_idx").on(
       table.jobTrackId,
       table.status,
@@ -388,12 +403,15 @@ export const tasks = pgTable(
     }),
     kind: taskKind("kind").notNull(),
     title: varchar("title", { length: 255 }).notNull(),
+    startAt: timestamp("start_at", { withTimezone: true }),
+    endAt: timestamp("end_at", { withTimezone: true }),
     deadlineAt: timestamp("deadline_at", { withTimezone: true }),
     completedAt: timestamp("completed_at", { withTimezone: true }),
     cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
     ...timestamps,
   },
   (table) => [
+    check("tasks_time_consistency", sql`(${table.startAt} IS NULL AND ${table.endAt} IS NULL) OR (${table.deadlineAt} IS NULL AND ${table.startAt} IS NOT NULL AND ${table.endAt} IS NOT NULL AND ${table.endAt} > ${table.startAt})`),
     uniqueIndex("tasks_assessment_unique").on(table.assessmentId),
     index("tasks_user_completion_deadline_idx").on(
       table.userId,

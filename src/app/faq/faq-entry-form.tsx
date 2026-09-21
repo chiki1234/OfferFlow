@@ -19,15 +19,16 @@ export type FaqEntryFormProps = {
   faqCategories: FaqCategoryConfig;
   onSuccess?: () => void;
   initialDraft?: FaqImportEditDraft;
+  defaultInterviewId?: string;
 };
 const initialState: KnowledgeActionState = { error: null, success: null };
 
-export function FaqEntryForm({ token, interviews, experiences, faqCategories, onSuccess, initialDraft }: FaqEntryFormProps) {
+export function FaqEntryForm({ token, interviews, experiences, faqCategories, onSuccess, initialDraft, defaultInterviewId = "" }: FaqEntryFormProps) {
   const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);
   const nextFocus = useRef<string | null>(null);
   const [state, action, pending] = useActionState(commitFaqBatchAction, initialState);
-  const [groups, setGroups] = useState(() => initialDraft ? restoreFaqEntryGroups(initialDraft.items, initialDraft.sourceInterviewId) : [newFaqEntryGroup("group-1")]);
+  const [groups, setGroups] = useState(() => initialDraft ? restoreFaqEntryGroups(initialDraft.items, initialDraft.sourceInterviewId) : [newFaqEntryGroup("group-1", defaultInterviewId)]);
   const [validationAttempt, setValidationAttempt] = useState(0);
   const [choiceOpen, setChoiceOpen] = useState(false);
   const [removeTarget, setRemoveTarget] = useState<{ groupId: string; cardId?: string } | null>(null);
@@ -74,7 +75,7 @@ export function FaqEntryForm({ token, interviews, experiences, faqCategories, on
   }
   function appendGroup() {
     if (total >= 100) return;
-    const group = newFaqEntryGroup(globalThis.crypto.randomUUID());
+    const group = newFaqEntryGroup(globalThis.crypto.randomUUID(), defaultInterviewId);
     nextFocus.current = group.id;
     setGroups((current) => [...current, group]);
   }
@@ -96,12 +97,12 @@ export function FaqEntryForm({ token, interviews, experiences, faqCategories, on
   const handleImported = useCallback(() => {
     editedSubmission.current = null;
     setAnalysisId(null);
-    setGroups([newFaqEntryGroup("group-1")]);
+    setGroups([newFaqEntryGroup("group-1", defaultInterviewId)]);
     setValidationAttempt(0);
     setEditingBatchId(null);
     setImportKey(globalThis.crypto.randomUUID());
     onSuccess?.();
-  }, [onSuccess]);
+  }, [onSuccess, defaultInterviewId]);
   const handleReturnToEdit = useCallback(() => {
     editedSubmission.current = null;
     setEditingBatchId(analysisId);

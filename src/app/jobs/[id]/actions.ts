@@ -1,18 +1,22 @@
 "use server";
 
+import { formTimeToIso } from "@/shared/time/parse-time-input";
+import { taskTimingFromForm } from "@/shared/time/task-timing";
+import { scheduledTimingFromForm } from "@/shared/time/scheduled-timing";
 import { revalidatePath } from "next/cache";
+import { redirect, RedirectType } from "next/navigation";
 import { z } from "zod";
 import { discardStagedJobDescriptionImages, listJobDescriptionAssetsForCleanup, uploadJobDescriptionImages } from "@/modules/job-description-assets/service";
 import { getJobWorkflow } from "@/modules/job-workflow/composition";
 import { resolveResumeSelection } from "@/modules/resume-library/form-selection";
-import { discardTranscriptAsset, getInterviewTranscriptAssetForCleanup, stageTranscriptAsset, type StagedTranscriptAsset } from "@/modules/transcript-assets/service";
+import { listJobTranscriptAssetsForCleanup, discardTranscriptAsset, getInterviewTranscriptAssetForCleanup, stageTranscriptAsset, type StagedTranscriptAsset } from "@/modules/transcript-assets/service";
 import { getCurrentActor } from "@/shared/actor/current-actor";
 import { logServerError } from "@/shared/logging/server-error";
 
 export type JobDetailActionState = { error: string | null; success: string | null };
 
 const baseSchema = z.object({
-  intent: z.enum(["submit", "update_context", "assessment", "interview", "reschedule_interview", "save_interview_transcript", "task", "update_task", "complete_task", "cancel_task", "complete_assessment", "cancel_assessment", "delete_assessment", "cancel_interview", "delete_interview", "confirm_interview_occurred", "complete_interview_review", "record_rejection", "end_job_track", "record_generic_progress", "delete_planned_job_track", "upload_jd_images"]),
+  intent: z.enum(["update_assessment", "delete_task", "submit", "update_context", "assessment", "interview", "reschedule_interview", "save_interview_transcript", "task", "update_task", "complete_task", "cancel_task", "complete_assessment", "cancel_assessment", "delete_assessment", "cancel_interview", "delete_interview", "confirm_interview_occurred", "complete_interview_review", "record_rejection", "end_job_track", "record_generic_progress", "delete_job_track", "upload_jd_images"]),
   idempotencyKey: z.string().min(8),
   jobTrackId: z.uuid(),
 });
@@ -32,6 +36,17 @@ export async function jobDetailAction(
     const workflow = getJobWorkflow();
     const actor = await getCurrentActor();
     switch (base.data.intent) {
+      case "delete_task": {
+        await workflow.execute({ type: "delete_task", idempotencyKey: base.data.idempotencyKey, taskId: z.uuid().parse(formData.get("taskId")) }, actor);
+        revalidateWorkspace(base.data.jobTrackId); revalidatePath("/interviews/[id]", "page");
+        return { error: null, success: "待办已删除。" };
+      }
+      case "update_assessment": {
+        const timing = scheduledTimingFromForm(formData);
+        await workflow.execute({ type: "update_assessment", idempotencyKey: base.data.idempotencyKey, assessmentId: z.uuid().parse(formData.get("assessmentId")), title: z.string().trim().min(1).max(255).parse(formData.get("title")), assessmentKind: z.enum(["assessment", "written_test"]).parse(formData.get("assessmentKind")), assessmentUrl: String(formData.get("assessmentUrl") ?? ""), timing }, actor);
+        revalidateWorkspace(base.data.jobTrackId);
+        return { error: null, success: "测评已更新，待办和日历已同步。" };
+      }
       case "update_context": {
         const data = z.object({
           version: z.coerce.number().int().positive(), companyName: z.string().trim().min(1).max(255),
@@ -48,6 +63,7 @@ export async function jobDetailAction(
           version: data.version,
           companyName: data.companyName,
           roleName: data.roleName,
+          preferenceRank: formData.has("preferenceRank") ? (formData.get("preferenceRank") ? z.coerce.number().int().positive().parse(formData.get("preferenceRank")) : null) : undefined,
           jobDescription: { text: data.jobDescription },
           jobUrl: data.jobUrl || undefined,
         }, actor);
@@ -88,14 +104,13 @@ export async function jobDetailAction(
           startAt: formData.get("startAt") || undefined, endAt: formData.get("endAt") || undefined,
           receivedAt: formData.get("receivedAt"),
         });
-        const timing = data.timingType === "deadline"
-          ? { type: "deadline" as const, deadlineAt: toIso(z.string().min(1).parse(data.deadlineAt)) }
-          : { type: "fixed_slot" as const, startAt: toIso(z.string().min(1).parse(data.startAt)), endAt: toIso(z.string().min(1).parse(data.endAt)) };
+        const timing = scheduledTimingFromForm(formData);
         await workflow.execute({
           type: "record_assessment_invite",
           idempotencyKey: base.data.idempotencyKey,
           jobTrackId: base.data.jobTrackId,
           assessmentKind: data.assessmentKind,
+          assessmentUrl: String(formData.get("assessmentUrl") ?? ""),
           title: data.title,
           timing,
           receivedAt: toIso(data.receivedAt),
@@ -107,14 +122,14 @@ export async function jobDetailAction(
         const data = z.object({
           sequenceNo: z.coerce.number().int().positive().optional(),
           roundLabel: z.string().trim().min(1).max(255),
-          interviewType: z.string().trim().min(1).max(255),
-          startAt: z.string().min(1), endAt: z.string().min(1), receivedAt: z.string().min(1),
+          interviewType: z.string().trim().max(255).optional(),
+          timingType: z.enum(["deadline", "fixed_slot"]), receivedAt: z.string().min(1),
           meetingUrl: z.union([z.url(), z.literal("")]),
           notes: z.string().trim().max(5000).optional(),
         }).parse({
           sequenceNo: formData.get("sequenceNo") || undefined,
-          roundLabel: formData.get("roundLabel"), interviewType: formData.get("interviewType"),
-          startAt: formData.get("startAt"), endAt: formData.get("endAt"),
+          roundLabel: formData.get("roundLabel"), interviewType: formData.get("interviewType") || undefined,
+          timingType: formData.get("timingType"),
           receivedAt: formData.get("receivedAt"), meetingUrl: formData.get("meetingUrl"),
           notes: formData.get("notes") || undefined,
         });
@@ -125,7 +140,7 @@ export async function jobDetailAction(
           sequenceNo: data.sequenceNo,
           roundLabel: data.roundLabel,
           interviewType: data.interviewType,
-          startAt: toIso(data.startAt), endAt: toIso(data.endAt),
+          timing: scheduledTimingFromForm(formData),
           receivedAt: toIso(data.receivedAt), meetingUrl: data.meetingUrl || undefined,
           notes: data.notes,
         }, actor);
@@ -133,13 +148,12 @@ export async function jobDetailAction(
         return { error: null, success: "已安排面试。" };
       }
       case "reschedule_interview": {
-        const data = z.object({ interviewId: z.uuid(), startAt: z.string().min(1), endAt: z.string().min(1) }).parse({ interviewId: formData.get("interviewId"), startAt: formData.get("startAt"), endAt: formData.get("endAt") });
+        const data = z.object({ interviewId: z.uuid(), timingType: z.enum(["deadline", "fixed_slot"]) }).parse({ interviewId: formData.get("interviewId"), timingType: formData.get("timingType") });
         await workflow.execute({
           type: "reschedule_interview",
           idempotencyKey: base.data.idempotencyKey,
           interviewId: data.interviewId,
-          startAt: toIso(data.startAt),
-          endAt: toIso(data.endAt),
+          timing: scheduledTimingFromForm(formData),
           changedAt: new Date().toISOString(),
         }, actor);
         revalidateWorkspace(base.data.jobTrackId);
@@ -188,7 +202,7 @@ export async function jobDetailAction(
           kind: data.interviewId ? "interview_prep" : "generic",
           interviewId: data.interviewId || undefined,
           title: data.title,
-          deadlineAt: data.deadlineAt ? toIso(data.deadlineAt) : undefined,
+          ...taskTimingFromForm(formData),
         }, actor);
         revalidateWorkspace(base.data.jobTrackId);
         if (data.interviewId) revalidatePath(`/interviews/${data.interviewId}`);
@@ -211,7 +225,7 @@ export async function jobDetailAction(
           idempotencyKey: base.data.idempotencyKey,
           taskId: data.taskId,
           title: data.title,
-          deadlineAt: data.deadlineAt ? toIso(data.deadlineAt) : undefined,
+          ...taskTimingFromForm(formData),
           interviewId: data.interviewId || null,
         }, actor);
         revalidateWorkspace(base.data.jobTrackId);
@@ -350,31 +364,32 @@ export async function jobDetailAction(
         revalidateWorkspace(base.data.jobTrackId);
         return { error: null, success: "进展已记录。" };
       }
-      case "delete_planned_job_track": {
+      case "delete_job_track": {
+        const transcriptAssets = await listJobTranscriptAssetsForCleanup({ userId: actor.userId, jobTrackId: base.data.jobTrackId });
         const descriptionAssets = await listJobDescriptionAssetsForCleanup({ userId: actor.userId, jobTrackId: base.data.jobTrackId });
         await workflow.execute({
-          type: "delete_planned_job_track",
+          type: "delete_job_track",
           idempotencyKey: base.data.idempotencyKey,
           jobTrackId: base.data.jobTrackId,
         }, actor);
         await discardStagedJobDescriptionImages(actor.userId, descriptionAssets).catch((cleanupError) => logServerError("Failed to clean up deleted JD assets", cleanupError));
+        await Promise.all(transcriptAssets.map(asset => discardTranscriptAsset(actor.userId, asset).catch(error => logServerError("Failed to clean up deleted transcript asset", error))));
         revalidatePath("/");
         revalidatePath("/jobs");
-        return { error: null, success: "待投递岗位已删除。" };
+        revalidatePath("/calendar");
+        revalidatePath("/faq");
+        if (formData.get("returnToJobs") === "true") break;
+        return { error: null, success: "岗位已删除。" };
       }
     }
   } catch (error) {
     logServerError("Job detail action failed", error);
     return { error: error instanceof z.ZodError ? "请检查输入内容。" : "操作失败，请重试。", success: null };
   }
+  redirect("/jobs", RedirectType.replace);
 }
 
-function toIso(value: string): string {
-  const normalized = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value) ? `${value}:00+08:00` : value;
-  const date = new Date(normalized);
-  if (Number.isNaN(date.getTime())) throw new Error("VALIDATION_ERROR: invalid local datetime");
-  return date.toISOString();
-}
+function toIso(value: string): string { return formTimeToIso(value); }
 
 function revalidateWorkspace(jobTrackId: string) {
   revalidatePath("/");

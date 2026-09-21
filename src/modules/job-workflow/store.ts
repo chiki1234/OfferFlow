@@ -11,6 +11,8 @@ export type StoredJobTrack = {
   userId: string;
   companyName: string;
   roleName: string;
+  department?: string | null;
+  preferenceRank?: number | null;
   lifecycle: "planned" | "active" | "ended";
   jobUrl: string | null;
   resumeId: string | null;
@@ -39,13 +41,21 @@ export interface JobWorkflowTransaction {
     commandType: string;
     result: JobCommandResult;
   }): Promise<void>;
+  assertPreferenceAvailable(userId: string, companyName: string, rank: number | null, exceptId?: string): Promise<void>;
+  updateAssessmentWithTask(input: { userId: string; assessment: AssessmentView; task: TaskView | null }): Promise<{ assessment: AssessmentView; task: TaskView | null }>;
+  deleteTask(userId: string, taskId: string): Promise<void>;
   insertJobTrack(jobTrack: StoredJobTrack): Promise<StoredJobTrack>;
   updateJobTrackContext(input: {
+    lifecycle?: "planned" | "active";
+    submittedAt?: string | null;
+    resumeId?: string | null;
     userId: string;
     jobTrackId: string;
     version: number;
     companyName: string;
     roleName: string;
+  department?: string | null;
+  preferenceRank?: number | null;
     jobUrl: string | null;
     jobDescription: StoredJobTrack["jobDescription"];
   }): Promise<StoredJobTrack | null>;
@@ -80,8 +90,7 @@ export interface JobWorkflowTransaction {
   updateInterviewSchedule(input: {
     userId: string;
     interviewId: string;
-    startAt: string;
-    endAt: string;
+    timing: InterviewView["timing"];
   }): Promise<InterviewView>;
   cancelInterviewWithPreparationTasks(input: {
     userId: string;
@@ -118,6 +127,8 @@ export interface JobWorkflowTransaction {
     taskId: string;
     title: string;
     deadlineAt: string | null;
+  startAt?: string | null;
+  endAt?: string | null;
     interviewId: string | null;
   }): Promise<TaskView>;
   completeTask(input: { userId: string; taskId: string; completedAt: string }): Promise<TaskView>;

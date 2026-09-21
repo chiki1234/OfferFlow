@@ -12,8 +12,8 @@ export type FaqEntryGroup = {
   raw: string;
 };
 
-export function newFaqEntryGroup(id: string): FaqEntryGroup {
-  return { id, interviewId: "", binding: "", experienceId: "", category: "", cards: [newFaqEntryCard(`${id}-first`)], pasteOpen: false, raw: "" };
+export function newFaqEntryGroup(id: string, interviewId = ""): FaqEntryGroup {
+  return { id, interviewId, binding: "", experienceId: "", category: "", cards: [newFaqEntryCard(`${id}-first`)], pasteOpen: false, raw: "" };
 }
 
 export function newFaqEntryCard(id: string): FaqEntryCard {

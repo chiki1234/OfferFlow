@@ -7,11 +7,12 @@ export const metadata: Metadata = {
   description: "围绕岗位组织求职流程、时间安排与面试知识。",
 };
 
-export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+export default function RootLayout({ children, modal }: Readonly<{ children: React.ReactNode; modal: React.ReactNode }>) {
   return (
     <html lang="zh-CN">
       <body>
         <WorkspaceShell>{children}</WorkspaceShell>
+        {modal}
       </body>
     </html>
   );

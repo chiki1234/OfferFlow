@@ -77,7 +77,7 @@ export function GlobalQuickActions() {
       {activeKind && <OperationModal onClose={closeModal} title={title}>
         {activeKind === "experience" ? <ExperienceForm onSuccess={closeModal} /> : isPending && !options ? <p className="modal-loading">正在准备操作表单…</p> : loadError ? <div className="modal-error"><p>操作选项加载失败，请重试。</p><button className="secondary-button" onClick={() => openAction(activeKind)} type="button">重新加载</button></div> : options ? (
           activeKind === "planned" || activeKind === "active"
-            ? <CreateJobForm experiences={options.experiences} fixedCreationMode={activeKind} idempotencyKey={token} onSuccess={closeModal} resumes={options.resumes} />
+            ? <CreateJobForm companies={options.companies} experiences={options.experiences} fixedCreationMode={activeKind} idempotencyKey={token} onSuccess={closeModal} resumes={options.resumes} />
             : activeKind === "progress"
               ? <QuickProgressForm currentLocal={toShanghaiLocalInput(new Date())} embedded jobs={options.jobs} onSuccess={closeModal} token={token} />
               : activeKind === "task"

@@ -1,4 +1,5 @@
 "use client";
+import { TaskTimeFields } from "@/components/task-time-fields";
 
 import { useCallback, useState, useTransition, type FormEvent } from "react";
 import { OperationModal } from "@/components/operation-modal";
@@ -6,7 +7,7 @@ import type { DashboardFormAction } from "./dashboard";
 
 export type DashboardJobOption = {
   id: string;
-  companyName: string;
+  companyName: string; department?: string | null;
   roleName: string;
 };
 
@@ -25,7 +26,7 @@ export function DashboardTaskModal({
 }) {
   const [title, setTitle] = useState("");
   const [jobId, setJobId] = useState("");
-  const [deadline, setDeadline] = useState(
+  const [deadline] = useState(
     () =>
       `${new Date(new Date(now).getTime() + 8 * 3_600_000).toISOString().slice(0, 10)}T23:59`,
   );
@@ -82,23 +83,14 @@ export function DashboardTaskModal({
             <option value="">通用待办，不绑定岗位</option>
             {jobs.map((job) => (
               <option key={job.id} value={job.id}>
-                {job.companyName} · {job.roleName}
+                {job.companyName}{job.department ? ` · ${job.department}` : ""} · {job.roleName}
               </option>
             ))}
           </select>
         </label>
-        <label>
-          截止时间（可选）
-          <input
-            name="deadlineAt"
-            type="datetime-local"
-            value={deadline}
-            onChange={(event) => setDeadline(event.target.value)}
-            disabled={pending}
-          />
-        </label>
+        <TaskTimeFields defaultDeadline={deadline} />
         <p className="dashboard-form-hint">
-          时间按北京时间记录。不设截止时间的待办不会出现在今日列表，可在关联岗位或全局待办中查看。
+          时间按北京时间记录。无时间待办显示在今天要做底部，未来事项显示在对应日期。
         </p>
         {error && (
           <p className="form-error" role="alert">
@@ -133,7 +125,7 @@ export function DashboardProgressModal({
   onClose,
   onSuccess,
 }: {
-  job: { id: string; companyName: string; roleName: string };
+  job: { id: string; companyName: string; department?: string | null; roleName: string };
   action: DashboardFormAction;
   onClose: () => void;
   onSuccess: (message: string) => void;
@@ -166,7 +158,7 @@ export function DashboardProgressModal({
   return (
     <OperationModal
       title="记录跟进"
-      description={`${job.companyName} · ${job.roleName}`}
+      description={`${job.companyName}${job.department ? ` · ${job.department}` : ""} · ${job.roleName}`}
       onClose={close}
     >
       <form className="create-form" onSubmit={submit} aria-busy={pending}>
@@ -187,7 +179,7 @@ export function DashboardProgressModal({
           />
         </label>
         <p className="dashboard-form-hint">
-          只记录已经发生的联系或反馈。记录后更新最近进展，等待提醒仍按面试或测评后的等待时长判断。
+          记录已经发生的联系或反馈，保存后重新计算等待天数。
         </p>
         {error && (
           <p className="form-error" role="alert">

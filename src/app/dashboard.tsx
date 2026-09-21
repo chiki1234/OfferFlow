@@ -1,5 +1,7 @@
 "use client";
 
+import { AttentionSettingsForm } from "./attention-settings-form";
+import { eventLabel, eventDetail } from "@/modules/workspace-queries/event-display";
 import { useCallback, useState, useTransition } from "react";
 import Link from "next/link";
 import { OperationModal } from "@/components/operation-modal";
@@ -12,7 +14,6 @@ import {
   ChevronRight,
   CircleCheck,
   ClipboardCheck,
-  FilePenLine,
   Send,
   Sprout,
 } from "lucide-react";
@@ -43,6 +44,7 @@ export type DashboardFormAction = (
   form: FormData,
 ) => Promise<DashboardActionState>;
 export type DashboardProps = {
+  waitingDays?: number;
   view: DashboardView;
   displayName: string;
   now: string;
@@ -53,6 +55,7 @@ export type DashboardProps = {
 };
 
 export function Dashboard({
+  waitingDays = 5,
   view,
   displayName,
   now,
@@ -87,14 +90,10 @@ export function Dashboard({
   const closeAll = useCallback(() => setShowAll(null), []);
   const today = view.todayItems.filter(
     (item) =>
-      item.sourceType !== "interview_review" &&
       !completed.has(`${item.sourceType}-${item.id}`),
   );
   const upcoming = view.upcomingItems.filter(
     (item) => !completed.has(`${item.sourceType}-${item.id}`),
-  );
-  const reviews = view.todayItems.filter(
-    (item) => item.sourceType === "interview_review",
   );
   const coveredJobs = new Set(
     view.todayItems
@@ -121,30 +120,6 @@ export function Dashboard({
     ...attentionJobs
       .filter((job) => job.attentionFlags.includes("overdue"))
       .map(renderAttentionJob),
-    ...reviews.map((item) => (
-      <article
-        className="dashboard-attention-card review"
-        key={`review-${item.id}`}
-      >
-        <span className="dashboard-attention-icon" aria-hidden="true">
-          <FilePenLine size={23} />
-        </span>
-        <div className="dashboard-item-copy">
-          <strong>
-            {item.companyName ? `${item.companyName} · ` : ""}
-            {item.title}
-          </strong>
-          <p>计划时间已到，尚未完成复盘</p>
-          <small>计划时间：{relativeTime(item.dueAt, now)}</small>
-        </div>
-        <Link
-          className="dashboard-outline-button"
-          href={`/interviews/${item.id}`}
-        >
-          去复盘
-        </Link>
-      </article>
-    )),
     ...attentionJobs
       .filter((job) => !job.attentionFlags.includes("overdue"))
       .map(renderAttentionJob),
@@ -226,8 +201,8 @@ export function Dashboard({
             )}
           </PanelHeading>
           {today.length ? (
-            <div className="dashboard-items">
-              {today.slice(0, 3).map((item) => (
+            <div className="dashboard-items dashboard-scroll-items">
+              {today.map((item) => (
                 <TaskRow
                   key={`${item.sourceType}-${item.id}`}
                   item={item}
@@ -281,8 +256,8 @@ export function Dashboard({
           </PanelHeading>
           {upcoming.length ? (
             <>
-              <div className="dashboard-items dashboard-schedule">
-                {upcoming.slice(0, 3).map((item) => (
+              <div className="dashboard-items dashboard-schedule dashboard-scroll-items">
+                {upcoming.map((item) => (
                   <ScheduleRow
                     key={`${item.sourceType}-${item.id}`}
                     item={item}
@@ -326,6 +301,7 @@ export function Dashboard({
           title="需要关注"
           count={attentionCards.length}
         >
+          <AttentionSettingsForm days={waitingDays} />
           {attentionCards.length > 3 && (
             <button
               className="dashboard-text-button"
@@ -546,7 +522,7 @@ function TaskRow({
   }
   return (
     <article className={`dashboard-task-row ${item.overdue ? "overdue" : ""}`}>
-      {completeAction ? (
+      {completeAction && (item.sourceType === "task" || item.sourceType === "assessment" || item.sourceType === "interview_review") ? (
         <button
           className="dashboard-complete"
           type="button"
@@ -563,28 +539,29 @@ function TaskRow({
       <Link
         className="dashboard-item-copy"
         href={
-          item.interviewId
-            ? `/interviews/${item.interviewId}`
+          (item.sourceType === "interview" || item.sourceType === "interview_review") ? `/interviews/${item.id}` : item.interviewId
+            ? `/interviews/${item.interviewId}#task-${item.id}`
             : item.jobTrackId
               ? `/jobs/${item.jobTrackId}#${item.sourceType}-${item.id}`
-              : "/quick"
+              : `/quick#task-${item.id}`
         }
       >
         <strong>{item.title}</strong>
         <p>
           {item.sourceType === "assessment"
             ? "测评 / 笔试"
-            : item.taskKind === "interview_prep"
+            : item.sourceType === "interview" ? "面试" : item.sourceType === "interview_review" ? "面试复盘" : item.taskKind === "interview_prep"
               ? "面试准备"
               : "待办"}{" "}
-          · {item.companyName ?? "通用事项"}
+          · {item.companyName ?? "通用事项"}{item.department ? ` · ${item.department}` : ""}
           {item.roleName ? ` · ${item.roleName}` : ""}
         </p>
       </Link>
+      <div className="dashboard-item-trailing">{item.externalUrl && <a className="external-event-link" href={item.externalUrl} target="_blank" rel="noreferrer">{item.sourceType === "interview" ? "进入会议 ↗" : "测评链接 ↗"}</a>}
       <time
         className={`dashboard-time-pill ${item.overdue ? "overdue" : "mint"}`}
-        dateTime={item.dueAt}
-        title={fullDateTime(item.dueAt)}
+        dateTime={item.dueAt ?? undefined}
+        title={item.dueAt ? fullDateTime(item.dueAt) : "无截止时间"}
       >
         {item.overdue
           ? item.timeSource === "start"
@@ -592,11 +569,11 @@ function TaskRow({
             : "已逾期 · "
           : item.timeSource === "interview"
             ? "面试 "
-            : item.timeSource === "deadline"
+            : item.timeSource === "deadline" && item.dueAt
               ? "截止 "
               : ""}
-        {relativeTime(item.dueAt, now)}
-      </time>
+        {!item.overdue && item.timeSource === "start" && item.endAt && item.dueAt && item.dueAt <= now && item.endAt > now ? "进行中 · " : ""}{item.dueAt ? relativeTime(item.dueAt, now) : "无时间"}
+      </time></div>
       {error && (
         <p className="dashboard-row-error" role="alert">
           {error}
@@ -632,7 +609,7 @@ function ScheduleRow({ item, now }: { item: CalendarItem; now: string }) {
             : item.sourceType === "assessment"
               ? "测评 / 笔试"
               : "待办"}{" "}
-          · {item.companyName ?? "通用事项"}
+          · {item.companyName ?? "通用事项"}{item.department ? ` · ${item.department}` : ""}
           {item.hasConflict && (
             <span className="dashboard-conflict"> · 时间冲突</span>
           )}
@@ -668,17 +645,11 @@ function AttentionJob({
       <div className="dashboard-item-copy">
         <Link href={`/jobs/${job.id}`}>
           <strong>
-            {job.companyName} · {job.roleName}
+            {job.companyName}{job.department ? ` · ${job.department}` : ""} · {job.roleName}
           </strong>
         </Link>
-        <p>
-          {overdue
-            ? "有事项已逾期，请及时处理"
-            : "流程等待较久，建议联系招聘方"}
-        </p>
-        {job.lastProgressAt && (
-          <small>最近进展：{dateParts(job.lastProgressAt).date}</small>
-        )}
+        <p>{job.latestEvent ? <>{eventLabel(job.latestEvent.kind)}{eventDetail(job.latestEvent.kind, job.latestEvent.payload) ? ' · ' + eventDetail(job.latestEvent.kind, job.latestEvent.payload) : ''}</> : '暂无动态'}</p>
+        {job.waitingDays != null && <small className="attention-waiting-days">等待 {job.waitingDays} 天</small>}
       </div>
       {!overdue && onFollowUp ? (
         <button

@@ -12,17 +12,24 @@ export type CreateJobTrackCommand = {
   idempotencyKey: string;
   companyName: string;
   roleName: string;
+  department?: string | null;
+  preferenceRank?: number | null;
   jobDescription: JobDescriptionInput;
   jobUrl?: string;
 };
 
 export type UpdateJobTrackContextCommand = {
   type: "update_job_track_context";
+  lifecycle?: "planned" | "active";
+  submittedAt?: string;
+  resumeId?: string;
   idempotencyKey: string;
   jobTrackId: string;
   version: number;
   companyName: string;
   roleName: string;
+  department?: string | null;
+  preferenceRank?: number | null;
   jobDescription: JobDescriptionInput;
   jobUrl?: string;
 };
@@ -35,15 +42,19 @@ export type SubmitApplicationCommand = {
   submittedAt: string;
 };
 
-export type AssessmentTiming =
+export type ScheduledTiming =
   | { type: "deadline"; deadlineAt: string }
   | { type: "fixed_slot"; startAt: string; endAt: string };
+
+export type AssessmentTiming = ScheduledTiming;
+export type InterviewTiming = ScheduledTiming;
 
 export type RecordAssessmentInviteCommand = {
   type: "record_assessment_invite";
   idempotencyKey: string;
   jobTrackId: string;
   assessmentKind: "assessment" | "written_test";
+  assessmentUrl?: string | null;
   title: string;
   timing: AssessmentTiming;
   receivedAt: string;
@@ -75,9 +86,8 @@ export type ScheduleInterviewCommand = {
   jobTrackId: string;
   sequenceNo?: number;
   roundLabel: string;
-  interviewType: string;
-  startAt: string;
-  endAt: string;
+  interviewType?: string;
+  timing: InterviewTiming;
   meetingUrl?: string;
   notes?: string;
   receivedAt: string;
@@ -87,8 +97,7 @@ export type RescheduleInterviewCommand = {
   type: "reschedule_interview";
   idempotencyKey: string;
   interviewId: string;
-  startAt: string;
-  endAt: string;
+  timing: InterviewTiming;
   changedAt: string;
 };
 
@@ -137,6 +146,8 @@ export type CreateTaskCommand = {
   kind: "generic" | "interview_prep";
   title: string;
   deadlineAt?: string;
+  startAt?: string;
+  endAt?: string;
 };
 
 export type UpdateTaskCommand = {
@@ -145,6 +156,8 @@ export type UpdateTaskCommand = {
   taskId: string;
   title: string;
   deadlineAt?: string;
+  startAt?: string;
+  endAt?: string;
   interviewId?: string | null;
 };
 
@@ -193,13 +206,27 @@ export type RecordGenericProgressCommand = {
   occurredAt: string;
 };
 
-export type DeletePlannedJobTrackCommand = {
-  type: "delete_planned_job_track";
+export type DeleteJobTrackCommand = {
+  type: "delete_job_track" | "delete_planned_job_track";
   idempotencyKey: string;
   jobTrackId: string;
 };
 
+export type CreateCompanyJobsCommand = {
+  type: "create_company_jobs";
+  idempotencyKey: string;
+  companyName: string;
+  entries: Array<Omit<CreateJobTrackCommand, "type" | "companyName" | "idempotencyKey"> & { resumeId?: string }>;
+  lifecycle: "planned" | "active";
+};
+export type UpdateAssessmentCommand = { type: "update_assessment"; idempotencyKey: string; assessmentId: string; title: string; assessmentKind: "assessment" | "written_test"; assessmentUrl?: string | null; timing: AssessmentTiming };
+export type DeleteTaskCommand = { type: "delete_task"; idempotencyKey: string; taskId: string };
+export type CreateCompanyJobsResult = { outcome: "company_jobs_created"; jobTracks: JobTrackView[] };
+export type UpdateAssessmentResult = { outcome: "assessment_updated"; assessment: AssessmentView; task: TaskView | null };
+export type DeleteTaskResult = { outcome: "task_deleted"; taskId: string; jobTrackId: string | null };
+
 export type JobCommand =
+  | CreateCompanyJobsCommand | UpdateAssessmentCommand | DeleteTaskCommand
   | CreateJobTrackCommand
   | UpdateJobTrackContextCommand
   | SubmitApplicationCommand
@@ -222,12 +249,14 @@ export type JobCommand =
   | EndJobTrackCommand
   | QuickImportJobTracksCommand
   | RecordGenericProgressCommand
-  | DeletePlannedJobTrackCommand;
+  | DeleteJobTrackCommand;
 
 export type JobTrackView = {
   id: string;
   companyName: string;
   roleName: string;
+  department?: string | null;
+  preferenceRank?: number | null;
   lifecycle: "planned" | "active" | "ended";
   jobUrl: string | null;
   resumeId: string | null;
@@ -239,6 +268,7 @@ export type JobTrackView = {
 export type JobEventView = {
   id: string;
   kind:
+    | "ApplicationCorrected"
     | "ApplicationSubmitted"
     | "AssessmentInvited"
     | "AssessmentCompleted"
@@ -259,6 +289,7 @@ export type JobEventView = {
 };
 
 export type AssessmentView = {
+  assessmentUrl?: string | null;
   id: string;
   jobTrackId: string;
   kind: "assessment" | "written_test";
@@ -277,6 +308,8 @@ export type TaskView = {
   kind: "generic" | "interview_prep" | "assessment";
   title: string;
   deadlineAt: string | null;
+  startAt?: string | null;
+  endAt?: string | null;
   completedAt: string | null;
   cancelledAt: string | null;
 };
@@ -287,8 +320,7 @@ export type InterviewView = {
   sequenceNo: number | null;
   roundLabel: string;
   interviewType: string;
-  startAt: string;
-  endAt: string;
+  timing: InterviewTiming;
   meetingUrl: string | null;
   notes: string | null;
   status: "scheduled" | "cancelled";
@@ -389,9 +421,10 @@ export type CancelTaskResult = { outcome: "task_cancelled"; task: TaskView };
 export type EndJobTrackResult = { outcome: "job_track_ended"; jobTrack: JobTrackView; event: JobEventView };
 export type QuickImportJobTracksResult = { outcome: "job_tracks_imported"; jobTracks: JobTrackView[] };
 export type RecordGenericProgressResult = { outcome: "progress_recorded"; event: JobEventView };
-export type DeletePlannedJobTrackResult = { outcome: "job_track_deleted"; jobTrackId: string };
+export type DeleteJobTrackResult = { outcome: "job_track_deleted"; jobTrackId: string };
 
 export type JobCommandResult =
+  | CreateCompanyJobsResult | UpdateAssessmentResult | DeleteTaskResult
   | CreateJobTrackResult
   | UpdateJobTrackContextResult
   | SubmitApplicationResult
@@ -413,10 +446,13 @@ export type JobCommandResult =
   | EndJobTrackResult
   | QuickImportJobTracksResult
   | RecordGenericProgressResult
-  | DeletePlannedJobTrackResult;
+  | DeleteJobTrackResult;
 
 export type JobCommandResultFor<TCommand extends JobCommand> =
-  TCommand extends CreateJobTrackCommand
+  TCommand extends CreateCompanyJobsCommand ? CreateCompanyJobsResult
+  : TCommand extends UpdateAssessmentCommand ? UpdateAssessmentResult
+  : TCommand extends DeleteTaskCommand ? DeleteTaskResult
+  : TCommand extends CreateJobTrackCommand
     ? CreateJobTrackResult
     : TCommand extends UpdateJobTrackContextCommand
       ? UpdateJobTrackContextResult
@@ -460,8 +496,8 @@ export type JobCommandResultFor<TCommand extends JobCommand> =
                               ? QuickImportJobTracksResult
                               : TCommand extends RecordGenericProgressCommand
                                 ? RecordGenericProgressResult
-                                : TCommand extends DeletePlannedJobTrackCommand
-                                  ? DeletePlannedJobTrackResult
+                                : TCommand extends DeleteJobTrackCommand
+                                  ? DeleteJobTrackResult
                                   : never;
 
 export interface JobWorkflow {

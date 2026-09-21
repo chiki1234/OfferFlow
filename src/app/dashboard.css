@@ -654,3 +654,18 @@
     scroll-behavior: auto !important;
   }
 }
+
+.dashboard-scroll-items { max-height: 288px; overflow-y: auto; overscroll-behavior-y: contain; scrollbar-gutter: stable; padding: 2px; }
+.dashboard-all-items .dashboard-scroll-items { max-height: none; overflow: visible; }
+.dashboard-item-trailing { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 8px; min-width: 0; }
+.dashboard-item-trailing .dashboard-time-pill { white-space: nowrap; }
+.dashboard-task-row { grid-template-columns: 30px minmax(0, 1fr) auto; }
+@media (max-width: 639px) {
+  .dashboard-item-trailing { max-width: 130px; }
+  .dashboard-task-row { gap: 8px; padding: 10px 8px; }
+}
+
+.attention-settings { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13px; }
+.attention-settings input { width: 64px; padding: 6px; border: 1px solid #ccd6ce; border-radius: 7px; }
+.dashboard-item-copy .attention-waiting-days { color: #c43131; font-weight: 600; }
+@media (max-width: 600px) { .dashboard-attention .dashboard-panel-heading { flex-wrap: wrap; gap: 12px; } }

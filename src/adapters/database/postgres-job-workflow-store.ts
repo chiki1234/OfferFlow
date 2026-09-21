@@ -6,6 +6,7 @@ import {
   assets,
   assessments,
   events,
+  faqImportBatches,
   interviews,
   jobDescriptions,
   jobTracks,
@@ -39,6 +40,8 @@ export function createPostgresJobWorkflowStore(db: AppDatabase): JobWorkflowStor
               userId: jobTracks.userId,
               companyName: jobTracks.companyName,
               roleName: jobTracks.roleName,
+              department: jobTracks.department,
+              preferenceRank: jobTracks.preferenceRank,
               lifecycle: jobTracks.lifecycle,
               jobUrl: jobTracks.jobUrl,
               resumeId: jobTracks.resumeId,
@@ -65,6 +68,8 @@ export function createPostgresJobWorkflowStore(db: AppDatabase): JobWorkflowStor
                 userId: row.userId,
                 companyName: row.companyName,
                 roleName: row.roleName,
+                department: row.department,
+                preferenceRank: row.preferenceRank,
                 lifecycle: row.lifecycle,
                 jobUrl: row.jobUrl,
                 resumeId: row.resumeId,
@@ -89,6 +94,7 @@ export function createPostgresJobWorkflowStore(db: AppDatabase): JobWorkflowStor
               jobTrackId: assessments.jobTrackId,
               assessmentKind: assessments.kind,
               assessmentTitle: assessments.title,
+              assessmentUrl: assessments.assessmentUrl,
               timingType: assessments.timingType,
               deadlineAt: assessments.deadlineAt,
               startAt: assessments.startAt,
@@ -145,6 +151,7 @@ export function createPostgresJobWorkflowStore(db: AppDatabase): JobWorkflowStor
               jobTrackId: row.jobTrackId,
               kind: row.assessmentKind,
               title: row.assessmentTitle,
+              assessmentUrl: row.assessmentUrl,
               timing,
               status: row.assessmentStatus,
               completedAt: row.assessmentCompletedAt?.toISOString() ?? null,
@@ -165,6 +172,8 @@ export function createPostgresJobWorkflowStore(db: AppDatabase): JobWorkflowStor
               sequenceNo: interviews.sequenceNo,
               roundLabel: interviews.roundLabel,
               interviewType: interviews.interviewType,
+              timingType: interviews.timingType,
+              deadlineAt: interviews.deadlineAt,
               startAt: interviews.startAt,
               endAt: interviews.endAt,
               meetingUrl: interviews.meetingUrl,
@@ -182,9 +191,17 @@ export function createPostgresJobWorkflowStore(db: AppDatabase): JobWorkflowStor
             .limit(1);
           return row
             ? {
-                ...row,
-                startAt: row.startAt.toISOString(),
-                endAt: row.endAt.toISOString(),
+                id: row.id,
+                jobTrackId: row.jobTrackId,
+                sequenceNo: row.sequenceNo,
+                roundLabel: row.roundLabel,
+                interviewType: row.interviewType,
+                timing: row.timingType === "deadline"
+                  ? { type: "deadline", deadlineAt: requireDate(row.deadlineAt, "interview.deadlineAt").toISOString() }
+                  : { type: "fixed_slot", startAt: requireDate(row.startAt, "interview.startAt").toISOString(), endAt: requireDate(row.endAt, "interview.endAt").toISOString() },
+                meetingUrl: row.meetingUrl,
+                notes: row.notes,
+                status: row.status,
                 cancelledAt: row.cancelledAt?.toISOString() ?? null,
                 occurredAt: row.occurredAt?.toISOString() ?? null,
                 reviewedAt: row.reviewedAt?.toISOString() ?? null,
@@ -203,12 +220,14 @@ export function createPostgresJobWorkflowStore(db: AppDatabase): JobWorkflowStor
             kind: tasks.kind,
             title: tasks.title,
             deadlineAt: tasks.deadlineAt,
+            startAt: tasks.startAt, endAt: tasks.endAt,
             completedAt: tasks.completedAt,
             cancelledAt: tasks.cancelledAt,
           }).from(tasks).where(and(eq(tasks.id, taskId), eq(tasks.userId, userId))).limit(1);
           return row ? {
             ...row,
             deadlineAt: row.deadlineAt?.toISOString() ?? null,
+            startAt: row.startAt?.toISOString() ?? null, endAt: row.endAt?.toISOString() ?? null,
             completedAt: row.completedAt?.toISOString() ?? null,
             cancelledAt: row.cancelledAt?.toISOString() ?? null,
           } : null;
@@ -216,6 +235,7 @@ export function createPostgresJobWorkflowStore(db: AppDatabase): JobWorkflowStor
 
         const transaction: JobWorkflowTransaction = {
           async findReceipt(userId, idempotencyKey) {
+            await databaseTransaction.execute(sql`select pg_advisory_xact_lock(hashtext(${userId + ":action:" + idempotencyKey}))`);
             const [receipt] = await databaseTransaction
               .select({ result: actionReceipts.result })
               .from(actionReceipts)
@@ -236,6 +256,27 @@ export function createPostgresJobWorkflowStore(db: AppDatabase): JobWorkflowStor
               result: input.result as unknown as Record<string, unknown>,
             });
           },
+          async assertPreferenceAvailable(userId, companyName, rank, exceptId) {
+            if (rank == null) return;
+            await databaseTransaction.execute(sql`select pg_advisory_xact_lock(hashtext(${userId + ":" + companyName.trim().toLowerCase()}))`);
+            const rows = await databaseTransaction.select({ id: jobTracks.id }).from(jobTracks).where(and(eq(jobTracks.userId, userId), sql`lower(btrim(${jobTracks.companyName})) = ${companyName.trim().toLowerCase()}`, eq(jobTracks.preferenceRank, rank)));
+            if (rows.some(row => row.id !== exceptId)) throw new Error("CONFLICT: 同公司志愿不能重复");
+          },
+          async deleteTask(userId, taskId) {
+            await databaseTransaction.delete(events).where(and(eq(events.userId, userId), eq(events.subjectId, taskId)));
+            await databaseTransaction.delete(actionReceipts).where(and(eq(actionReceipts.userId, userId), sql`${actionReceipts.result}::text LIKE ${'%' + taskId + '%'}`));
+            await databaseTransaction.delete(tasks).where(and(eq(tasks.userId, userId), eq(tasks.id, taskId)));
+          },
+          async updateAssessmentWithTask(input) {
+            const { assessment, task } = input;
+            const timing = assessment.timing;
+            await databaseTransaction.update(assessments).set({ title: assessment.title, kind: assessment.kind, assessmentUrl: assessment.assessmentUrl, timingType: timing.type, deadlineAt: timing.type === "deadline" ? new Date(timing.deadlineAt) : null, startAt: timing.type === "fixed_slot" ? new Date(timing.startAt) : null, endAt: timing.type === "fixed_slot" ? new Date(timing.endAt) : null, updatedAt: new Date() }).where(eq(assessments.id, assessment.id));
+            if (task) {
+              const values = { ...task, startAt: task.startAt ? new Date(task.startAt) : null, endAt: task.endAt ? new Date(task.endAt) : null, userId: input.userId, deadlineAt: task.deadlineAt ? new Date(task.deadlineAt) : null, completedAt: task.completedAt ? new Date(task.completedAt) : null, cancelledAt: task.cancelledAt ? new Date(task.cancelledAt) : null, updatedAt: new Date() };
+              await databaseTransaction.insert(tasks).values(values).onConflictDoUpdate({ target: tasks.id, set: values });
+            } else await databaseTransaction.delete(tasks).where(and(eq(tasks.assessmentId, assessment.id), eq(tasks.userId, input.userId)));
+            return input;
+          },
           async insertJobTrack(jobTrack) {
             if (jobTrack.jobDescription.imageAssetIds.length > 0) {
               const ownedAssets = await databaseTransaction.select({ id: assets.id }).from(assets).where(and(
@@ -252,6 +293,8 @@ export function createPostgresJobWorkflowStore(db: AppDatabase): JobWorkflowStor
               userId: jobTrack.userId,
               companyName: jobTrack.companyName,
               roleName: jobTrack.roleName,
+              department: jobTrack.department,
+              preferenceRank: jobTrack.preferenceRank,
               lifecycle: jobTrack.lifecycle,
               jobUrl: jobTrack.jobUrl,
               createdAt: new Date(jobTrack.createdAt),
@@ -292,6 +335,11 @@ export function createPostgresJobWorkflowStore(db: AppDatabase): JobWorkflowStor
             const changed = await databaseTransaction.update(jobTracks).set({
               companyName: input.companyName,
               roleName: input.roleName,
+              department: input.department,
+              lifecycle: input.lifecycle,
+              submittedAt: input.submittedAt === undefined ? undefined : input.submittedAt ? new Date(input.submittedAt) : null,
+              resumeId: input.resumeId,
+              preferenceRank: input.preferenceRank,
               jobUrl: input.jobUrl,
               updatedAt: new Date(),
               version: sql`${jobTracks.version} + 1`,
@@ -343,6 +391,7 @@ export function createPostgresJobWorkflowStore(db: AppDatabase): JobWorkflowStor
               jobTrackId: input.assessment.jobTrackId,
               kind: input.assessment.kind,
               title: input.assessment.title,
+              assessmentUrl: input.assessment.assessmentUrl,
               timingType: timing.type,
               deadlineAt: timing.type === "deadline" ? new Date(timing.deadlineAt) : null,
               startAt: timing.type === "fixed_slot" ? new Date(timing.startAt) : null,
@@ -358,6 +407,7 @@ export function createPostgresJobWorkflowStore(db: AppDatabase): JobWorkflowStor
                 kind: input.task.kind,
                 title: input.task.title,
                 deadlineAt: input.task.deadlineAt ? new Date(input.task.deadlineAt) : null,
+              startAt: input.task.startAt ? new Date(input.task.startAt) : null, endAt: input.task.endAt ? new Date(input.task.endAt) : null,
               });
             }
             return input;
@@ -423,8 +473,10 @@ export function createPostgresJobWorkflowStore(db: AppDatabase): JobWorkflowStor
               sequenceNo: interview.sequenceNo,
               roundLabel: interview.roundLabel,
               interviewType: interview.interviewType,
-              startAt: new Date(interview.startAt),
-              endAt: new Date(interview.endAt),
+              timingType: interview.timing.type,
+              deadlineAt: interview.timing.type === "deadline" ? new Date(interview.timing.deadlineAt) : null,
+              startAt: interview.timing.type === "fixed_slot" ? new Date(interview.timing.startAt) : null,
+              endAt: interview.timing.type === "fixed_slot" ? new Date(interview.timing.endAt) : null,
               meetingUrl: interview.meetingUrl,
               notes: interview.notes,
               status: interview.status,
@@ -441,8 +493,10 @@ export function createPostgresJobWorkflowStore(db: AppDatabase): JobWorkflowStor
             await databaseTransaction
               .update(interviews)
               .set({
-                startAt: new Date(input.startAt),
-                endAt: new Date(input.endAt),
+                timingType: input.timing.type,
+                deadlineAt: input.timing.type === "deadline" ? new Date(input.timing.deadlineAt) : null,
+                startAt: input.timing.type === "fixed_slot" ? new Date(input.timing.startAt) : null,
+                endAt: input.timing.type === "fixed_slot" ? new Date(input.timing.endAt) : null,
                 updatedAt: new Date(),
                 version: sql`${interviews.version} + 1`,
               })
@@ -544,6 +598,7 @@ export function createPostgresJobWorkflowStore(db: AppDatabase): JobWorkflowStor
               kind: input.task.kind,
               title: input.task.title,
               deadlineAt: input.task.deadlineAt ? new Date(input.task.deadlineAt) : null,
+              startAt: input.task.startAt ? new Date(input.task.startAt) : null, endAt: input.task.endAt ? new Date(input.task.endAt) : null,
               completedAt: input.task.completedAt ? new Date(input.task.completedAt) : null,
               cancelledAt: input.task.cancelledAt ? new Date(input.task.cancelledAt) : null,
             });
@@ -554,6 +609,7 @@ export function createPostgresJobWorkflowStore(db: AppDatabase): JobWorkflowStor
             await databaseTransaction.update(tasks).set({
               title: input.title,
               deadlineAt: input.deadlineAt ? new Date(input.deadlineAt) : null,
+              startAt: input.startAt ? new Date(input.startAt) : null, endAt: input.endAt ? new Date(input.endAt) : null,
               interviewId: input.interviewId,
               updatedAt: new Date(),
             }).where(and(eq(tasks.id, input.taskId), eq(tasks.userId, input.userId)));
@@ -596,6 +652,16 @@ export function createPostgresJobWorkflowStore(db: AppDatabase): JobWorkflowStor
             return ended;
           },
           async deleteJobTrack(userId, jobTrackId) {
+            const owned = await loadJobTrack(userId, jobTrackId);
+            if (!owned) throw new Error("NOT_FOUND: job track was not found");
+            const relatedInterviews = await databaseTransaction.select({ id: interviews.id }).from(interviews).where(eq(interviews.jobTrackId, jobTrackId));
+            for (const interview of relatedInterviews) {
+              await databaseTransaction.update(faqImportBatches).set({
+                items: sql`(SELECT COALESCE(jsonb_agg(CASE WHEN item->>'sourceInterviewId' = ${interview.id} THEN jsonb_set(item, '{sourceInterviewId}', 'null'::jsonb) ELSE item END), '[]'::jsonb) FROM jsonb_array_elements(${faqImportBatches.items}) AS item)`,
+              }).where(eq(faqImportBatches.userId, userId));
+            }
+            const descriptions = await databaseTransaction.select({ id: jobDescriptions.id }).from(jobDescriptions).where(eq(jobDescriptions.jobTrackId, jobTrackId));
+            if (descriptions.length) await databaseTransaction.delete(assetLinks).where(and(eq(assetLinks.ownerType, "job_description"), inArray(assetLinks.ownerId, descriptions.map(item => item.id))));
             const deleted = await databaseTransaction.delete(jobTracks)
               .where(and(eq(jobTracks.id, jobTrackId), eq(jobTracks.userId, userId)))
               .returning({ id: jobTracks.id });

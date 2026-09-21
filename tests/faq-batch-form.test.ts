@@ -36,6 +36,15 @@ async function fill(element: HTMLSelectElement | HTMLTextAreaElement, value: str
 async function ready() { await fill(source(), "none"); await fill(binding(), "unbound"); await fill(question(), "第一个问题"); }
 
 describe("grouped FAQ entry", () => {
+  it("defaults every new group to the current interview and keeps manual choices independent", async () => {
+    await render({ defaultInterviewId: "interview-1" });
+    expect(source().value).toBe("interview-1");
+    await fill(source(), "none");
+    await click("添加一组");
+    expect(source(1).value).toBe("interview-1");
+    expect(source().value).toBe("none");
+  });
+
   it("validates source, binding and question in visual order", async () => {
     await render(); expect(groups()).toHaveLength(1); expect(cards()).toHaveLength(1); expect(invalid()).toEqual([]);
     await click("保存全部 1 条 FAQ"); expect(invalid()).toEqual([source(), binding(), question()]); expect(document.activeElement).toBe(source()); expect(commit).not.toHaveBeenCalled();

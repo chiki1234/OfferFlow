@@ -59,7 +59,7 @@ function attentionJob(
 }
 
 async function click(text: string) {
-  const button = Array.from(container.querySelectorAll("button")).find((item) =>
+  const button = Array.from(document.querySelectorAll("button")).find((item) =>
     item.textContent?.includes(text),
   );
   expect(button, text).toBeDefined();
@@ -104,7 +104,7 @@ describe("工作台展示与跳转", () => {
         }),
       );
     });
-    const button = container.querySelector<HTMLButtonElement>(
+    const button = document.querySelector<HTMLButtonElement>(
       '[aria-label="完成：准备事项 1"]',
     )!;
     await act(async () => {
@@ -114,16 +114,16 @@ describe("工作台展示与跳转", () => {
     await act(async () => {
       response.reject(new Error("offline"));
     });
-    expect(container.querySelector('[role="alert"]')?.textContent).toContain(
+    expect(document.querySelector('[role="alert"]')?.textContent).toContain(
       "暂时无法完成",
     );
-    expect(container.textContent).toContain("准备事项 1");
+    expect(document.body.textContent).toContain("准备事项 1");
     expect(button.disabled).toBe(false);
     await act(async () => {
       button.click();
     });
-    expect(container.textContent).not.toContain("准备事项 1");
-    expect(container.querySelector('[role="status"]')?.textContent).toContain(
+    expect(document.body.textContent).not.toContain("准备事项 1");
+    expect(document.querySelector('[role="status"]')?.textContent).toContain(
       "测评已完成",
     );
   });
@@ -144,11 +144,11 @@ describe("工作台展示与跳转", () => {
     });
     expect(
       Array.from(
-        container.querySelectorAll('[aria-label="求职进度概览"] a'),
+        document.querySelectorAll('[aria-label="求职进度概览"] a'),
       ).map((link) => link.getAttribute("href")),
     ).toEqual(["/jobs?tab=planned", "/jobs?tab=active", "/jobs?tab=ended"]);
-    expect(container.textContent).toContain("夜深了，张三");
-    expect(container.textContent).toContain("今天 10:00");
+    expect(document.body.textContent).toContain("夜深了，张三");
+    expect(document.body.textContent).toContain("今天 10:00");
   });
   it("全部事项弹窗有可访问标题，Tab 不离开弹窗，关闭后焦点回到入口", async () => {
     await act(async () => {
@@ -156,14 +156,14 @@ describe("工作台展示与跳转", () => {
         createElement(Dashboard, { view: view(), displayName: "张三", now }),
       );
     });
-    const opener = container.querySelector<HTMLButtonElement>(
+    const opener = document.querySelector<HTMLButtonElement>(
       '[aria-label="查看全部今日事项"]',
     )!;
     await act(async () => {
       opener.focus();
       opener.click();
     });
-    const dialog = container.querySelector<HTMLElement>('[role="dialog"]')!;
+    const dialog = document.querySelector<HTMLElement>('[role="dialog"]')!;
     expect(dialog.getAttribute("aria-labelledby")).toBeTruthy();
     const focusable = dialog.querySelectorAll<HTMLElement>("a, button");
     await act(async () => {
@@ -203,7 +203,7 @@ describe("工作台展示与跳转", () => {
       );
     });
     await click("添加待办");
-    const title = container.querySelector<HTMLInputElement>(
+    const title = document.querySelector<HTMLInputElement>(
       'input[name="title"]',
     )!;
     await act(async () => {
@@ -214,8 +214,8 @@ describe("工作台展示与跳转", () => {
       title.dispatchEvent(new Event("input", { bubbles: true }));
     });
     await click("创建待办");
-    expect(container.querySelector('[role="dialog"]')).toBeNull();
-    expect(container.querySelector('[role="status"]')?.textContent).toContain(
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+    expect(document.querySelector('[role="status"]')?.textContent).toContain(
       "待办已创建",
     );
     expect(window.location.pathname).toBe("/");
@@ -237,16 +237,16 @@ describe("工作台展示与跳转", () => {
         createElement(Dashboard, { view: data, displayName: "张三", now }),
       );
     });
-    const tasks = container.querySelector(
+    const tasks = document.querySelector(
       '[aria-labelledby="dashboard-tasks-heading"]',
     )!;
     expect(tasks.textContent).toContain("面试准备");
     expect(tasks.textContent).toContain("面试 明天 10:00");
     expect(tasks.querySelector("a")?.getAttribute("href")).toBe(
-      "/interviews/interview-prep",
+      "/interviews/interview-prep#task-task-0",
     );
   });
-  it("日程与关注区也只预览三项，剩余事项可在各自的全部列表中查看", async () => {
+  it("日程与今日复盘在内部滚动区显示全部事项", async () => {
     const data = view();
     data.todayItems = data.todayItems.map((item, index) => ({
       ...item,
@@ -270,27 +270,27 @@ describe("工作台展示与跳转", () => {
         createElement(Dashboard, { view: data, displayName: "张三", now }),
       );
     });
-    expect(container.textContent).not.toContain("面试安排 4");
-    expect(container.textContent).not.toContain("复盘事项 4");
+    expect(document.body.textContent).toContain("面试安排 4");
+    expect(document.body.textContent).toContain("复盘事项 4");
     await act(async () => {
-      container
+      document
         .querySelector<HTMLButtonElement>('[aria-label="查看全部日程"]')!
         .click();
     });
-    expect(container.querySelector('[role="dialog"]')?.textContent).toContain(
+    expect(document.querySelector('[role="dialog"]')?.textContent).toContain(
       "面试安排 5",
     );
     await act(async () => {
-      container
+      document
         .querySelector<HTMLButtonElement>('[aria-label="关闭弹窗"]')!
         .click();
     });
     await act(async () => {
-      container
-        .querySelector<HTMLButtonElement>('[aria-label="查看全部关注事项"]')!
+      document
+        .querySelector<HTMLButtonElement>('[aria-label="查看全部今日事项"]')!
         .click();
     });
-    expect(container.querySelector('[role="dialog"]')?.textContent).toContain(
+    expect(document.querySelector('[role="dialog"]')?.textContent).toContain(
       "复盘事项 5",
     );
   });
@@ -318,10 +318,10 @@ describe("工作台展示与跳转", () => {
       );
     });
     await click("记录跟进");
-    expect(container.querySelector('[role="dialog"]')?.textContent).toContain(
+    expect(document.querySelector('[role="dialog"]')?.textContent).toContain(
       "示例公司 · 产品经理",
     );
-    const textarea = container.querySelector("textarea")!;
+    const textarea = document.querySelector("textarea")!;
     await act(async () => {
       Object.getOwnPropertyDescriptor(
         HTMLTextAreaElement.prototype,
@@ -330,13 +330,13 @@ describe("工作台展示与跳转", () => {
       textarea.dispatchEvent(new Event("input", { bubbles: true }));
     });
     await click("保存跟进");
-    expect(container.querySelector('[role="alert"]')?.textContent).toContain(
+    expect(document.querySelector('[role="alert"]')?.textContent).toContain(
       "暂时无法保存",
     );
     expect(textarea.value).toBe("已联系招聘方，等待回复");
     await click("保存跟进");
-    expect(container.querySelector('[role="dialog"]')).toBeNull();
-    expect(container.querySelector('[role="status"]')?.textContent).toContain(
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+    expect(document.querySelector('[role="status"]')?.textContent).toContain(
       "进展已记录",
     );
     expect(window.location.pathname).toBe("/");
@@ -374,17 +374,17 @@ describe("工作台展示与跳转", () => {
         }),
       );
     });
-    const complete = container.querySelector<HTMLButtonElement>(
+    const complete = document.querySelector<HTMLButtonElement>(
       'button[aria-label="完成：准备事项 1"]',
     );
     expect(complete).not.toBeNull();
     await act(async () => {
       complete!.click();
     });
-    expect(container.querySelector('[role="status"]')?.textContent).toContain(
+    expect(document.querySelector('[role="status"]')?.textContent).toContain(
       "待办已完成",
     );
-    expect(container.textContent).not.toContain("准备事项 1");
+    expect(document.body.textContent).not.toContain("准备事项 1");
     expect(window.location.pathname).toBe("/");
   });
   it("逾期事项已在今日区时不再重复生成关注卡，复盘只出现一次且直达对应面试", async () => {
@@ -410,32 +410,32 @@ describe("工作台展示与跳转", () => {
         createElement(Dashboard, { view: data, displayName: "张三", now }),
       );
     });
-    const attention = container.querySelector(
+    const attention = document.querySelector(
       '[aria-labelledby="dashboard-attention-heading"]',
     )!;
     expect(attention.textContent).not.toContain("有事项已逾期");
-    expect(container.textContent?.match(/复盘一面/g)).toHaveLength(1);
-    expect(attention.querySelector("a")?.getAttribute("href")).toBe(
-      "/interviews/review-1",
-    );
+    expect(document.body.textContent?.match(/复盘一面/g)).toHaveLength(1);
+    expect(document.querySelector('a[href="/interviews/review-1"]')).not.toBeNull();
+    expect(attention.textContent).not.toContain("复盘一面");
   });
-  it("首页只显示三项待办，查看全部在当前页面展示剩余事项并能关闭", async () => {
+  it("首页渲染全部待办供内部滚动，查看全部仍可打开关闭", async () => {
     await act(async () => {
       root.render(
         createElement(Dashboard, { view: view(), displayName: "张三", now }),
       );
     });
-    expect(container.textContent).toContain("准备事项 3");
-    expect(container.textContent).not.toContain("准备事项 4");
+    expect(document.body.textContent).toContain("准备事项 3");
+    expect(document.body.textContent).toContain("准备事项 4");
+    expect(document.querySelector(".dashboard-scroll-items")?.children).toHaveLength(5);
     await click("查看全部");
-    const dialog = container.querySelector('[role="dialog"]');
+    const dialog = document.querySelector('[role="dialog"]');
     expect(dialog?.textContent).toContain("准备事项 5");
     expect(window.location.pathname).toBe("/");
     await act(async () => {
-      container
+      document
         .querySelector<HTMLButtonElement>('button[aria-label="关闭弹窗"]')!
         .click();
     });
-    expect(container.querySelector('[role="dialog"]')).toBeNull();
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
   });
 });

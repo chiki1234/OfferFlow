@@ -14,6 +14,7 @@ export type ListJobTracksQuery = {
 
 export type GetDashboardQuery = {
   type: "get_dashboard";
+  waitingDays?: number;
   now?: string;
 };
 
@@ -38,10 +39,18 @@ export type JobTrackListItem = {
   id: string;
   companyName: string;
   roleName: string;
+  department?: string | null;
+  preferenceRank?: number | null;
   lifecycle: "planned" | "active" | "ended";
   submittedAt: string | null;
   endedAt: string | null;
   endReason: string | null;
+  jobUrl?: string | null;
+  selectedResume?: { name: string; assetId: string } | null;
+  milestones?: Array<{ id: string; title: string; href: string; status: string; at: string | null; endAt?: string | null; timingType?: "deadline" | "fixed_slot" }>;
+  pendingTasks?: Array<{ id: string; title: string; at: string | null; endAt?: string | null; timingType?: "deadline" | "fixed_slot" }>;
+  latestEvent?: { kind: string; payload: Record<string, unknown>; occurredAt: string } | null;
+  waitingDays?: number | null;
   hasJobDescription: boolean;
   hasResume: boolean;
   lastProgressAt: string | null;
@@ -62,8 +71,10 @@ export type CalendarItem = {
   sourceType: "interview" | "assessment" | "task";
   jobTrackId: string | null;
   companyName: string | null;
+  department?: string | null;
   roleName: string | null;
   title: string;
+  externalUrl?: string | null;
   startAt: string;
   endAt: string | null;
   isDeadline: boolean;
@@ -72,12 +83,15 @@ export type CalendarItem = {
 
 export type DashboardActionItem = {
   id: string;
-  sourceType: "assessment" | "task" | "interview_review";
+  sourceType: "assessment" | "task" | "interview_review" | "interview";
   jobTrackId: string | null;
   companyName: string | null;
+  department?: string | null;
   roleName: string | null;
   title: string;
-  dueAt: string;
+  externalUrl?: string | null;
+  dueAt: string | null;
+  endAt?: string | null;
   overdue: boolean;
   taskKind?: TaskView["kind"];
   interviewId?: string | null;

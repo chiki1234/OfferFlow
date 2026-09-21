@@ -80,6 +80,21 @@ function createMemoryTransaction(state: MemoryState): JobWorkflowTransaction {
     async saveReceipt(input) {
       state.receipts.set(`${input.userId}:${input.idempotencyKey}`, input.result);
     },
+    async assertPreferenceAvailable(userId, companyName, rank, exceptId) {
+      if (rank != null && [...state.jobTracks.values()].some(job => job.userId === userId && job.id !== exceptId && job.companyName.trim().toLowerCase() === companyName.trim().toLowerCase() && job.preferenceRank === rank)) throw new Error("CONFLICT: 同公司志愿不能重复");
+    },
+    async deleteTask(userId, taskId) {
+      if (state.taskOwners.get(taskId) !== userId) throw new Error("NOT_FOUND: task was not found");
+      state.tasks.delete(taskId); state.taskOwners.delete(taskId);
+      state.events = state.events.filter(event => event.subjectId !== taskId);
+      for (const [key, value] of state.receipts) if (key.startsWith(userId + ":") && JSON.stringify(value).includes(taskId)) state.receipts.delete(key);
+    },
+    async updateAssessmentWithTask(input) {
+      state.assessments.set(input.assessment.id, input.assessment);
+      for (const [id, task] of state.tasks) if (task.assessmentId === input.assessment.id) { state.tasks.delete(id); state.taskOwners.delete(id); }
+      if (input.task) { state.tasks.set(input.task.id, input.task); state.taskOwners.set(input.task.id, input.userId); }
+      return input;
+    },
     async insertJobTrack(jobTrack) {
       state.jobTracks.set(jobTrack.id, jobTrack);
       return jobTrack;
@@ -92,6 +107,11 @@ function createMemoryTransaction(state: MemoryState): JobWorkflowTransaction {
         ...jobTrack,
         companyName: input.companyName,
         roleName: input.roleName,
+        department: input.department ?? null,
+        lifecycle: input.lifecycle ?? jobTrack.lifecycle,
+        submittedAt: input.submittedAt === undefined ? jobTrack.submittedAt : input.submittedAt,
+        resumeId: input.resumeId === undefined ? jobTrack.resumeId : input.resumeId,
+        preferenceRank: input.preferenceRank ?? null,
         jobUrl: input.jobUrl,
         jobDescription: input.jobDescription,
         version: jobTrack.version + 1,
@@ -197,7 +217,7 @@ function createMemoryTransaction(state: MemoryState): JobWorkflowTransaction {
       if (!interview || jobTrack?.userId !== input.userId) {
         throw new Error("NOT_FOUND: interview was not found");
       }
-      const updated = { ...interview, startAt: input.startAt, endAt: input.endAt };
+      const updated = { ...interview, timing: input.timing };
       state.interviews.set(updated.id, updated);
       return updated;
     },
@@ -273,7 +293,7 @@ function createMemoryTransaction(state: MemoryState): JobWorkflowTransaction {
     async updateTask(input) {
       const task = state.tasks.get(input.taskId);
       if (!task || state.taskOwners.get(input.taskId) !== input.userId) throw new Error("NOT_FOUND: task was not found");
-      const updated = { ...task, title: input.title, deadlineAt: input.deadlineAt, interviewId: input.interviewId };
+      const updated = { ...task, title: input.title, deadlineAt: input.deadlineAt, startAt: input.startAt ?? null, endAt: input.endAt ?? null, interviewId: input.interviewId };
       state.tasks.set(updated.id, updated);
       return updated;
     },
@@ -311,6 +331,10 @@ function createMemoryTransaction(state: MemoryState): JobWorkflowTransaction {
       const jobTrack = state.jobTracks.get(jobTrackId);
       if (!jobTrack || jobTrack.userId !== userId) throw new Error("NOT_FOUND: job track was not found");
       state.jobTracks.delete(jobTrackId);
+      for (const [id, item] of state.assessments) if (item.jobTrackId === jobTrackId) state.assessments.delete(id);
+      for (const [id, item] of state.interviews) if (item.jobTrackId === jobTrackId) state.interviews.delete(id);
+      for (const [id, item] of state.tasks) if (item.jobTrackId === jobTrackId) { state.tasks.delete(id); state.taskOwners.delete(id); }
+      state.events = state.events.filter(item => item.jobTrackId !== jobTrackId);
     },
     async markApplicationSubmitted(input) {
       const jobTrack = state.jobTracks.get(input.jobTrackId);

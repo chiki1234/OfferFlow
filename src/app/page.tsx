@@ -1,3 +1,4 @@
+import { cookies } from "next/headers";
 import { and, eq } from "drizzle-orm";
 import { getCurrentActor } from "@/shared/actor/current-actor";
 import { getWorkspaceQueries } from "@/modules/workspace-queries/composition";
@@ -15,9 +16,11 @@ export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
   const actor = await getCurrentActor();
+  const storedDays = Number((await cookies()).get(`attention-days-${encodeURIComponent(actor.userId)}`)?.value ?? 5);
+  const waitingDays = Number.isInteger(storedDays) && storedDays >= 1 && storedDays <= 365 ? storedDays : 5;
   const now = new Date().toISOString();
   const [view, profile, taskJobs] = await Promise.all([
-    getWorkspaceQueries().read({ type: "get_dashboard", now }, actor),
+    getWorkspaceQueries().read({ type: "get_dashboard", now, waitingDays }, actor),
     getDatabaseRuntime()
       .db.select({ name: users.name })
       .from(users)
@@ -26,7 +29,7 @@ export default async function HomePage() {
     getDatabaseRuntime()
       .db.select({
         id: jobTracks.id,
-        companyName: jobTracks.companyName,
+        companyName: jobTracks.companyName, department: jobTracks.department,
         roleName: jobTracks.roleName,
       })
       .from(jobTracks)
@@ -40,6 +43,7 @@ export default async function HomePage() {
   ]);
   return (
     <Dashboard
+      waitingDays={waitingDays}
       view={view}
       displayName={profile[0]?.name.trim() || "求职者"}
       now={now}

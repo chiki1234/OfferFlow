@@ -32,7 +32,7 @@ describe("deriveJobTrackStatus", () => {
     });
   });
 
-  it("面试时间到达只推导待复盘，岗位进入 waiting", () => {
+  it("面试结束后推导待复盘，岗位进入 waiting", () => {
     const view = deriveJobTrackStatus(
       {
         lifecycle: "active",
@@ -42,7 +42,7 @@ describe("deriveJobTrackStatus", () => {
           {
             id: "interview-1",
             status: "scheduled",
-            startAt: "2026-09-01T02:00:00.000Z",
+            timing: { type: "fixed_slot", startAt: "2026-09-01T02:00:00.000Z", endAt: "2026-09-01T03:00:00.000Z" },
             occurredAt: null,
             reviewedAt: null,
           },
@@ -59,7 +59,25 @@ describe("deriveJobTrackStatus", () => {
     });
   });
 
-  it("面试后等待超过 7 天会标记 waiting_long", () => {
+  it("Deadline 面试逾期前后保持行动状态，逾期后标记提醒", () => {
+    const facts = {
+      lifecycle: "active" as const,
+      submittedAt: "2026-09-01T00:00:00.000Z",
+      assessments: [],
+      interviews: [{
+        id: "interview-deadline",
+        status: "scheduled" as const,
+        timing: { type: "deadline" as const, deadlineAt: "2026-09-03T02:00:00.000Z" },
+        occurredAt: null,
+        reviewedAt: null,
+      }],
+      tasks: [],
+    };
+    expect(deriveJobTrackStatus(facts, new Date("2026-09-03T01:59:59.000Z"))).toMatchObject({ actionState: "action_required", attentionFlags: [] });
+    expect(deriveJobTrackStatus(facts, new Date("2026-09-03T02:00:00.001Z"))).toMatchObject({ actionState: "action_required", attentionFlags: ["overdue"] });
+  });
+
+  it("面试后等待满 5 天会标记 waiting_long", () => {
     const view = deriveJobTrackStatus(
       {
         lifecycle: "active",
@@ -69,7 +87,7 @@ describe("deriveJobTrackStatus", () => {
           {
             id: "interview-2",
             status: "scheduled",
-            startAt: "2026-08-20T02:00:00.000Z",
+            timing: { type: "fixed_slot", startAt: "2026-08-20T02:00:00.000Z", endAt: "2026-08-20T03:00:00.000Z" },
             occurredAt: "2026-08-20T03:00:00.000Z",
             reviewedAt: "2026-08-20T04:00:00.000Z",
           },
@@ -108,8 +126,7 @@ describe("deriveJobTrackCurrentNext", () => {
           id: "interview-1",
           roundLabel: "一面",
           interviewType: "技术面",
-          startAt: "2026-09-03T02:00:00.000Z",
-          endAt: "2026-09-03T03:00:00.000Z",
+          timing: { type: "fixed_slot", startAt: "2026-09-03T02:00:00.000Z", endAt: "2026-09-03T03:00:00.000Z" },
           status: "scheduled",
           occurredAt: null,
           reviewedAt: null,
@@ -152,6 +169,28 @@ describe("deriveJobTrackCurrentNext", () => {
     });
   });
 
+  it("Deadline 面试作为下一步，并在逾期后置顶", () => {
+    const view = deriveJobTrackCurrentNext({
+      lifecycle: "active",
+      submittedAt: "2026-09-01T00:00:00.000Z",
+      endedAt: null,
+      endReason: null,
+      lastProgressAt: null,
+      assessments: [],
+      interviews: [{
+        id: "deadline-interview",
+        roundLabel: "HR 面",
+        interviewType: "",
+        timing: { type: "deadline", deadlineAt: "2026-09-03T02:00:00.000Z" },
+        status: "scheduled",
+        occurredAt: null,
+        reviewedAt: null,
+      }],
+      tasks: [],
+    }, new Date("2026-09-03T03:00:00.000Z"));
+    expect(view).toMatchObject({ state: "action_required", title: "HR 面", detail: "已超过截止时间", scheduledAt: "2026-09-03T02:00:00.000Z" });
+  });
+
   it("待投递与已结束岗位不会伪造下一步行动", () => {
     const base = {
       submittedAt: null,
@@ -178,8 +217,7 @@ describe("deriveJobTrackCurrentNext", () => {
           id: "interview-past",
           roundLabel: "一面",
           interviewType: "技术面",
-          startAt: "2026-08-31T02:00:00.000Z",
-          endAt: "2026-08-31T03:00:00.000Z",
+          timing: { type: "fixed_slot", startAt: "2026-08-31T02:00:00.000Z", endAt: "2026-08-31T03:00:00.000Z" },
           status: "scheduled",
           occurredAt: "2026-08-31T03:00:00.000Z",
           reviewedAt: null,
@@ -234,8 +272,8 @@ describe("findImminentInterviewPreparationTasks", () => {
       { id: "generic", kind: "generic", interviewId: null, completedAt: null, cancelledAt: null },
     ] as const;
     const interviews = [
-      { id: "tomorrow", status: "scheduled", startAt: "2026-09-03T02:00:00.000Z" },
-      { id: "next-week", status: "scheduled", startAt: "2026-09-08T02:00:00.000Z" },
+      { id: "tomorrow", status: "scheduled", timing: { type: "fixed_slot", startAt: "2026-09-03T02:00:00.000Z", endAt: "2026-09-03T03:00:00.000Z" } },
+      { id: "next-week", status: "scheduled", timing: { type: "fixed_slot", startAt: "2026-09-08T02:00:00.000Z", endAt: "2026-09-08T03:00:00.000Z" } },
     ] as const;
 
     const result = findImminentInterviewPreparationTasks(
@@ -247,5 +285,15 @@ describe("findImminentInterviewPreparationTasks", () => {
 
     expect(result.map((item) => item.task.id)).toEqual(["include"]);
     expect(result[0]?.dueAt).toBe("2026-09-03T02:00:00.000Z");
+  });
+
+  it("Deadline 面试也作为准备待办的时间锚点", () => {
+    const result = findImminentInterviewPreparationTasks(
+      [{ id: "prep", kind: "interview_prep", interviewId: "deadline", completedAt: null, cancelledAt: null }],
+      [{ id: "deadline", status: "scheduled", timing: { type: "deadline", deadlineAt: "2026-09-03T15:00:00.000Z" } }],
+      new Date("2026-09-02T04:00:00.000Z"),
+      new Date("2026-09-03T15:59:59.999Z"),
+    );
+    expect(result).toMatchObject([{ dueAt: "2026-09-03T15:00:00.000Z" }]);
   });
 });

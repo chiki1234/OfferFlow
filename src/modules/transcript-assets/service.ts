@@ -53,3 +53,9 @@ export async function getInterviewTranscriptAssetForCleanup(input: { userId: str
     .limit(1);
   return asset ?? null;
 }
+
+export async function listJobTranscriptAssetsForCleanup(input: { userId: string; jobTrackId: string }): Promise<StagedTranscriptAsset[]> {
+  return getDatabaseRuntime().db.select({ id: assets.id, storageKey: assets.storageKey, originalName: assets.originalName, mimeType: assets.mimeType })
+    .from(interviews).innerJoin(jobTracks, eq(jobTracks.id, interviews.jobTrackId)).innerJoin(assets, eq(assets.id, interviews.transcriptAssetId))
+    .where(and(eq(jobTracks.id, input.jobTrackId), eq(jobTracks.userId, input.userId), eq(assets.userId, input.userId)));
+}

@@ -269,8 +269,7 @@ describe("JobWorkflow", () => {
         sequenceNo: 1,
         roundLabel: "一面",
         interviewType: "视频面试",
-        startAt: "2026-09-08T02:00:00.000Z",
-        endAt: "2026-09-08T03:00:00.000Z",
+        timing: { type: "fixed_slot", startAt: "2026-09-08T02:00:00.000Z", endAt: "2026-09-08T03:00:00.000Z" },
         meetingUrl: "https://meeting.example.com/first-round",
         receivedAt: "2026-09-02T01:30:00.000Z",
       },
@@ -284,8 +283,7 @@ describe("JobWorkflow", () => {
         sequenceNo: 1,
         roundLabel: "一面",
         interviewType: "视频面试",
-        startAt: "2026-09-08T02:00:00.000Z",
-        endAt: "2026-09-08T03:00:00.000Z",
+        timing: { type: "fixed_slot", startAt: "2026-09-08T02:00:00.000Z", endAt: "2026-09-08T03:00:00.000Z" },
         meetingUrl: "https://meeting.example.com/first-round",
         status: "scheduled",
         cancelledAt: null,
@@ -333,8 +331,7 @@ describe("JobWorkflow", () => {
         jobTrackId: created.jobTrack.id,
         roundLabel: "二面",
         interviewType: "视频面试",
-        startAt: "2026-09-09T02:00:00.000Z",
-        endAt: "2026-09-09T03:00:00.000Z",
+        timing: { type: "fixed_slot", startAt: "2026-09-09T02:00:00.000Z", endAt: "2026-09-09T03:00:00.000Z" },
         receivedAt: "2026-09-02T02:00:00.000Z",
       },
       { userId: "user-1" },
@@ -345,8 +342,7 @@ describe("JobWorkflow", () => {
         type: "reschedule_interview",
         idempotencyKey: "reschedule-change-time",
         interviewId: scheduled.interview.id,
-        startAt: "2026-09-10T06:00:00.000Z",
-        endAt: "2026-09-10T07:30:00.000Z",
+        timing: { type: "fixed_slot", startAt: "2026-09-10T06:00:00.000Z", endAt: "2026-09-10T07:30:00.000Z" },
         changedAt: "2026-09-03T03:00:00.000Z",
       },
       { userId: "user-1" },
@@ -356,8 +352,7 @@ describe("JobWorkflow", () => {
       outcome: "interview_rescheduled",
       interview: {
         id: scheduled.interview.id,
-        startAt: "2026-09-10T06:00:00.000Z",
-        endAt: "2026-09-10T07:30:00.000Z",
+        timing: { type: "fixed_slot", startAt: "2026-09-10T06:00:00.000Z", endAt: "2026-09-10T07:30:00.000Z" },
         status: "scheduled",
       },
       event: {
@@ -366,12 +361,53 @@ describe("JobWorkflow", () => {
         subjectId: scheduled.interview.id,
         occurredAt: "2026-09-03T03:00:00.000Z",
         payload: {
-          previousStartAt: "2026-09-09T02:00:00.000Z",
-          previousEndAt: "2026-09-09T03:00:00.000Z",
-          startAt: "2026-09-10T06:00:00.000Z",
-          endAt: "2026-09-10T07:30:00.000Z",
+          previousTiming: { type: "fixed_slot", startAt: "2026-09-09T02:00:00.000Z", endAt: "2026-09-09T03:00:00.000Z" },
+          timing: { type: "fixed_slot", startAt: "2026-09-10T06:00:00.000Z", endAt: "2026-09-10T07:30:00.000Z" },
         },
       },
+    });
+  });
+
+  it("面试可以按 Deadline 安排，并在改期时切换为固定时段", async () => {
+    const workflow = createInMemoryJobWorkflow({
+      resumes: [{ id: "resume-interview-deadline", userId: "user-1" }],
+    });
+    const created = await workflow.execute({
+      type: "create_job_track",
+      idempotencyKey: "deadline-interview-create-job",
+      companyName: "Deadline 公司",
+      roleName: "产品经理",
+      jobDescription: { text: "JD" },
+    }, { userId: "user-1" });
+    await workflow.execute({
+      type: "submit_application",
+      idempotencyKey: "deadline-interview-submit-job",
+      jobTrackId: created.jobTrack.id,
+      resumeId: "resume-interview-deadline",
+      submittedAt: "2026-09-01T00:00:00.000Z",
+    }, { userId: "user-1" });
+
+    const scheduled = await workflow.execute({
+      type: "schedule_interview",
+      idempotencyKey: "deadline-interview-schedule",
+      jobTrackId: created.jobTrack.id,
+      roundLabel: "AI 面试",
+      timing: { type: "deadline", deadlineAt: "2026-09-12T15:59:00Z" },
+      receivedAt: "2026-09-10T00:00:00Z",
+    }, { userId: "user-1" });
+    expect(scheduled.interview.timing).toEqual({ type: "deadline", deadlineAt: "2026-09-12T15:59:00.000Z" });
+
+    const rescheduled = await workflow.execute({
+      type: "reschedule_interview",
+      idempotencyKey: "deadline-interview-reschedule",
+      interviewId: scheduled.interview.id,
+      timing: { type: "fixed_slot", startAt: "2026-09-13T02:00:00Z", endAt: "2026-09-13T03:00:00Z" },
+      changedAt: "2026-09-11T00:00:00Z",
+    }, { userId: "user-1" });
+    expect(rescheduled.interview.timing).toEqual({ type: "fixed_slot", startAt: "2026-09-13T02:00:00.000Z", endAt: "2026-09-13T03:00:00.000Z" });
+    expect(rescheduled.event.payload).toMatchObject({
+      previousTiming: { type: "deadline", deadlineAt: "2026-09-12T15:59:00.000Z" },
+      timing: { type: "fixed_slot", startAt: "2026-09-13T02:00:00.000Z", endAt: "2026-09-13T03:00:00.000Z" },
     });
   });
 
@@ -406,8 +442,7 @@ describe("JobWorkflow", () => {
         jobTrackId: created.jobTrack.id,
         roundLabel: "HR 沟通",
         interviewType: "电话面试",
-        startAt: "2026-09-11T02:00:00.000Z",
-        endAt: "2026-09-11T02:30:00.000Z",
+        timing: { type: "fixed_slot", startAt: "2026-09-11T02:00:00.000Z", endAt: "2026-09-11T02:30:00.000Z" },
         receivedAt: "2026-09-02T03:00:00.000Z",
       },
       { userId: "user-1" },
@@ -428,8 +463,7 @@ describe("JobWorkflow", () => {
       outcome: "interview_cancelled",
       interview: {
         id: scheduled.interview.id,
-        startAt: "2026-09-11T02:00:00.000Z",
-        endAt: "2026-09-11T02:30:00.000Z",
+        timing: { type: "fixed_slot", startAt: "2026-09-11T02:00:00.000Z", endAt: "2026-09-11T02:30:00.000Z" },
         status: "cancelled",
         cancelledAt: "2026-09-04T01:00:00.000Z",
       },
@@ -447,7 +481,7 @@ describe("JobWorkflow", () => {
     const workflow = createInMemoryJobWorkflow({ resumes: [{ id: "resume-occurred", userId: "user-1" }] });
     const created = await workflow.execute({ type: "create_job_track", idempotencyKey: "occurred-create", companyName: "美团", roleName: "AI 产品经理", jobDescription: { text: "智能服务产品" } }, { userId: "user-1" });
     await workflow.execute({ type: "submit_application", idempotencyKey: "occurred-submit", jobTrackId: created.jobTrack.id, resumeId: "resume-occurred", submittedAt: "2026-09-01T09:00:00.000Z" }, { userId: "user-1" });
-    const scheduled = await workflow.execute({ type: "schedule_interview", idempotencyKey: "occurred-schedule", jobTrackId: created.jobTrack.id, roundLabel: "一面", interviewType: "视频面试", startAt: "2026-09-05T02:00:00.000Z", endAt: "2026-09-05T03:00:00.000Z", receivedAt: "2026-09-02T04:00:00.000Z" }, { userId: "user-1" });
+    const scheduled = await workflow.execute({ type: "schedule_interview", idempotencyKey: "occurred-schedule", jobTrackId: created.jobTrack.id, roundLabel: "一面", interviewType: "视频面试", timing: { type: "fixed_slot", startAt: "2026-09-05T02:00:00.000Z", endAt: "2026-09-05T03:00:00.000Z" }, receivedAt: "2026-09-02T04:00:00.000Z" }, { userId: "user-1" });
 
     const occurred = await workflow.execute({
       type: "confirm_interview_occurred",
@@ -467,7 +501,7 @@ describe("JobWorkflow", () => {
     const workflow = createInMemoryJobWorkflow({ resumes: [{ id: "resume-review", userId: "user-1" }] });
     const created = await workflow.execute({ type: "create_job_track", idempotencyKey: "review-create", companyName: "京东", roleName: "AI 产品经理", jobDescription: { text: "智能供应链产品" } }, { userId: "user-1" });
     await workflow.execute({ type: "submit_application", idempotencyKey: "review-submit", jobTrackId: created.jobTrack.id, resumeId: "resume-review", submittedAt: "2026-09-01T10:00:00.000Z" }, { userId: "user-1" });
-    const scheduled = await workflow.execute({ type: "schedule_interview", idempotencyKey: "review-schedule", jobTrackId: created.jobTrack.id, roundLabel: "二面", interviewType: "现场面试", startAt: "2026-09-06T02:00:00.000Z", endAt: "2026-09-06T03:00:00.000Z", receivedAt: "2026-09-02T05:00:00.000Z" }, { userId: "user-1" });
+    const scheduled = await workflow.execute({ type: "schedule_interview", idempotencyKey: "review-schedule", jobTrackId: created.jobTrack.id, roundLabel: "二面", interviewType: "现场面试", timing: { type: "fixed_slot", startAt: "2026-09-06T02:00:00.000Z", endAt: "2026-09-06T03:00:00.000Z" }, receivedAt: "2026-09-02T05:00:00.000Z" }, { userId: "user-1" });
 
     const reviewed = await workflow.execute({
       type: "complete_interview_review",
@@ -519,7 +553,7 @@ describe("JobWorkflow", () => {
     const workflow = createInMemoryJobWorkflow({ resumes: [{ id: "resume-task-update", userId: "user-1" }] });
     const created = await workflow.execute({ type: "create_job_track", idempotencyKey: "task-update-job", companyName: "小红书", roleName: "AI 产品经理", jobDescription: { text: "智能社区产品" } }, { userId: "user-1" });
     await workflow.execute({ type: "submit_application", idempotencyKey: "task-update-submit", jobTrackId: created.jobTrack.id, resumeId: "resume-task-update", submittedAt: "2026-09-01T11:00:00.000Z" }, { userId: "user-1" });
-    const interview = await workflow.execute({ type: "schedule_interview", idempotencyKey: "task-update-interview", jobTrackId: created.jobTrack.id, roundLabel: "一面", interviewType: "视频面试", startAt: "2026-09-08T02:00:00.000Z", endAt: "2026-09-08T03:00:00.000Z", receivedAt: "2026-09-02T05:00:00.000Z" }, { userId: "user-1" });
+    const interview = await workflow.execute({ type: "schedule_interview", idempotencyKey: "task-update-interview", jobTrackId: created.jobTrack.id, roundLabel: "一面", interviewType: "视频面试", timing: { type: "fixed_slot", startAt: "2026-09-08T02:00:00.000Z", endAt: "2026-09-08T03:00:00.000Z" }, receivedAt: "2026-09-02T05:00:00.000Z" }, { userId: "user-1" });
     const task = await workflow.execute({ type: "create_task", idempotencyKey: "task-update-create", jobTrackId: created.jobTrack.id, kind: "generic", title: "准备问题", deadlineAt: "2026-09-07T10:00:00.000Z" }, { userId: "user-1" });
 
     const updated = await workflow.execute({
@@ -546,7 +580,7 @@ describe("JobWorkflow", () => {
     const workflow = createInMemoryJobWorkflow({ resumes: [{ id: "resume-prep", userId: "user-1" }] });
     const created = await workflow.execute({ type: "create_job_track", idempotencyKey: "prep-job", companyName: "滴滴", roleName: "AI 产品经理", jobDescription: { text: "智能出行产品" } }, { userId: "user-1" });
     await workflow.execute({ type: "submit_application", idempotencyKey: "prep-submit", jobTrackId: created.jobTrack.id, resumeId: "resume-prep", submittedAt: "2026-09-01T11:00:00.000Z" }, { userId: "user-1" });
-    const interview = await workflow.execute({ type: "schedule_interview", idempotencyKey: "prep-interview", jobTrackId: created.jobTrack.id, roundLabel: "一面", interviewType: "视频面试", startAt: "2026-09-08T02:00:00.000Z", endAt: "2026-09-08T03:00:00.000Z", receivedAt: "2026-09-02T05:00:00.000Z" }, { userId: "user-1" });
+    const interview = await workflow.execute({ type: "schedule_interview", idempotencyKey: "prep-interview", jobTrackId: created.jobTrack.id, roundLabel: "一面", interviewType: "视频面试", timing: { type: "fixed_slot", startAt: "2026-09-08T02:00:00.000Z", endAt: "2026-09-08T03:00:00.000Z" }, receivedAt: "2026-09-02T05:00:00.000Z" }, { userId: "user-1" });
 
     const task = await workflow.execute({ type: "create_task", idempotencyKey: "prep-task", jobTrackId: created.jobTrack.id, interviewId: interview.interview.id, kind: "interview_prep", title: "准备项目追问", deadlineAt: "2026-09-07T12:00:00.000Z" }, { userId: "user-1" });
 
@@ -638,7 +672,7 @@ describe("JobWorkflow", () => {
     const workflow = createInMemoryJobWorkflow({ resumes: [{ id: "resume-delete-interview", userId: "user-1" }] });
     const created = await workflow.execute({ type: "create_job_track", idempotencyKey: "delete-interview-create", companyName: "小米", roleName: "产品经理", jobDescription: { text: "智能助手" } }, { userId: "user-1" });
     await workflow.execute({ type: "submit_application", idempotencyKey: "delete-interview-submit", jobTrackId: created.jobTrack.id, resumeId: "resume-delete-interview", submittedAt: "2026-09-01T15:00:00.000Z" }, { userId: "user-1" });
-    const scheduled = await workflow.execute({ type: "schedule_interview", idempotencyKey: "delete-interview-schedule", jobTrackId: created.jobTrack.id, roundLabel: "一面", interviewType: "视频面试", startAt: "2026-09-12T02:00:00.000Z", endAt: "2026-09-12T03:00:00.000Z", receivedAt: "2026-09-02T06:00:00.000Z" }, { userId: "user-1" });
+    const scheduled = await workflow.execute({ type: "schedule_interview", idempotencyKey: "delete-interview-schedule", jobTrackId: created.jobTrack.id, roundLabel: "一面", interviewType: "视频面试", timing: { type: "fixed_slot", startAt: "2026-09-12T02:00:00.000Z", endAt: "2026-09-12T03:00:00.000Z" }, receivedAt: "2026-09-02T06:00:00.000Z" }, { userId: "user-1" });
     const task = await workflow.execute({ type: "create_task", idempotencyKey: "delete-interview-task", jobTrackId: created.jobTrack.id, interviewId: scheduled.interview.id, kind: "interview_prep", title: "准备一面", deadlineAt: "2026-09-11T10:00:00.000Z" }, { userId: "user-1" });
 
     const deleted = await workflow.execute({ type: "delete_interview", idempotencyKey: "delete-interview-record", interviewId: scheduled.interview.id }, { userId: "user-1" });
@@ -684,7 +718,7 @@ describe("JobWorkflow", () => {
     const workflow = createInMemoryJobWorkflow({ resumes: [{ id: "resume-transcript", userId: "user-1" }] });
     const created = await workflow.execute({ type: "create_job_track", idempotencyKey: "transcript-create", companyName: "哔哩哔哩", roleName: "AI 产品经理", jobDescription: { text: "智能内容产品" } }, { userId: "user-1" });
     await workflow.execute({ type: "submit_application", idempotencyKey: "transcript-submit", jobTrackId: created.jobTrack.id, resumeId: "resume-transcript", submittedAt: "2026-09-01T16:00:00.000Z" }, { userId: "user-1" });
-    const scheduled = await workflow.execute({ type: "schedule_interview", idempotencyKey: "transcript-schedule", jobTrackId: created.jobTrack.id, roundLabel: "一面", interviewType: "视频面试", startAt: "2026-09-13T02:00:00.000Z", endAt: "2026-09-13T03:00:00.000Z", receivedAt: "2026-09-02T07:00:00.000Z" }, { userId: "user-1" });
+    const scheduled = await workflow.execute({ type: "schedule_interview", idempotencyKey: "transcript-schedule", jobTrackId: created.jobTrack.id, roundLabel: "一面", interviewType: "视频面试", timing: { type: "fixed_slot", startAt: "2026-09-13T02:00:00.000Z", endAt: "2026-09-13T03:00:00.000Z" }, receivedAt: "2026-09-02T07:00:00.000Z" }, { userId: "user-1" });
     const saved = await workflow.execute({ type: "save_interview_transcript", idempotencyKey: "transcript-save", interviewId: scheduled.interview.id, transcriptText: "面试官：请介绍一下你的项目\n我：项目的核心目标是…", savedAt: "2026-09-13T04:00:00.000Z" }, { userId: "user-1" });
     expect(saved).toMatchObject({ outcome: "transcript_saved", interview: { id: scheduled.interview.id, occurredAt: "2026-09-13T04:00:00.000Z" }, occurredEvent: { kind: "InterviewOccurred", payload: { confirmedBy: "transcript" } } });
   });
@@ -696,7 +730,7 @@ describe("JobWorkflow", () => {
     });
     const created = await workflow.execute({ type: "create_job_track", idempotencyKey: "transcript-file-create", companyName: "米哈游", roleName: "AI 产品经理", jobDescription: { text: "智能内容产品" } }, { userId: "user-1" });
     await workflow.execute({ type: "submit_application", idempotencyKey: "transcript-file-submit", jobTrackId: created.jobTrack.id, resumeId: "resume-transcript-file", submittedAt: "2026-09-01T16:00:00.000Z" }, { userId: "user-1" });
-    const scheduled = await workflow.execute({ type: "schedule_interview", idempotencyKey: "transcript-file-schedule", jobTrackId: created.jobTrack.id, roundLabel: "二面", interviewType: "视频面试", startAt: "2026-09-14T02:00:00.000Z", endAt: "2026-09-14T03:00:00.000Z", receivedAt: "2026-09-02T07:00:00.000Z" }, { userId: "user-1" });
+    const scheduled = await workflow.execute({ type: "schedule_interview", idempotencyKey: "transcript-file-schedule", jobTrackId: created.jobTrack.id, roundLabel: "二面", interviewType: "视频面试", timing: { type: "fixed_slot", startAt: "2026-09-14T02:00:00.000Z", endAt: "2026-09-14T03:00:00.000Z" }, receivedAt: "2026-09-02T07:00:00.000Z" }, { userId: "user-1" });
 
     const saved = await workflow.execute({ type: "save_interview_transcript", idempotencyKey: "transcript-file-save", interviewId: scheduled.interview.id, transcriptAssetId: "asset-transcript-file", savedAt: "2026-09-14T04:00:00.000Z" }, { userId: "user-1" });
 

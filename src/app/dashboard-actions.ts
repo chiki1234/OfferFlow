@@ -14,7 +14,7 @@ export async function completeDashboardItemAction(
   try {
     const actor = await getCurrentActor();
     const input = z
-      .object({ sourceType: z.enum(["task", "assessment"]), itemId: z.uuid() })
+      .object({ sourceType: z.enum(["task", "assessment", "interview_review"]), itemId: z.uuid() })
       .parse({
         sourceType: form.get("sourceType"),
         itemId: form.get("itemId"),
@@ -23,7 +23,9 @@ export async function completeDashboardItemAction(
     const idempotencyKey = `dashboard:${input.sourceType}:${input.itemId}:complete`;
     const completedAt = new Date().toISOString();
     const result =
-      input.sourceType === "assessment"
+      input.sourceType === "interview_review"
+        ? await workflow.execute({ type: "complete_interview_review", interviewId: input.itemId, reviewedAt: completedAt, idempotencyKey }, actor)
+        : input.sourceType === "assessment"
         ? await workflow.execute(
             {
               type: "complete_assessment",
@@ -45,7 +47,7 @@ export async function completeDashboardItemAction(
     const jobTrackId =
       "assessment" in result
         ? result.assessment.jobTrackId
-        : result.task.jobTrackId;
+        : "interview" in result ? result.interview.jobTrackId : result.task.jobTrackId;
     revalidatePath("/");
     revalidatePath("/jobs");
     revalidatePath("/calendar");
@@ -55,7 +57,7 @@ export async function completeDashboardItemAction(
     return {
       error: null,
       success:
-        input.sourceType === "assessment" ? "测评已完成。" : "待办已完成。",
+        input.sourceType === "interview_review" ? "面试复盘已完成。" : input.sourceType === "assessment" ? "测评已完成。" : "待办已完成。",
     };
   } catch (error) {
     logServerError("Dashboard completion failed", error);

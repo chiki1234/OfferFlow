@@ -97,6 +97,30 @@ describe.skipIf(process.env.DASHBOARD_INTEGRATION !== "1")(
       return form;
     }
 
+    it("复盘在结束后出现，跨日截止为结束加三小时；改期同步，完成后消失且幂等", async () => {
+      const workflow = getJobWorkflow();
+      const jobTrackId = await activeJob();
+      const { interview } = await workflow.execute({
+        type: "schedule_interview", idempotencyKey: randomUUID(), jobTrackId,
+        roundLabel: "复盘时间验收", interviewType: "视频",
+        timing: { type: "fixed_slot", startAt: "2026-09-09T14:00:00.000Z", endAt: "2026-09-09T15:00:00.000Z" }, receivedAt: "2026-09-09T10:00:00.000Z",
+      }, actor);
+      const reviewAt = async (now: string) => (await getWorkspaceQueries().read({ type: "get_dashboard", now }, actor)).todayItems.find(item => item.id === interview.id && item.sourceType === "interview_review");
+      expect(await reviewAt("2026-09-09T14:59:59.999Z")).toBeUndefined();
+      expect(await reviewAt("2026-09-09T15:00:00.000Z")).toMatchObject({ dueAt: "2026-09-09T18:00:00.000Z", timeSource: "deadline", overdue: false });
+      expect(await reviewAt("2026-09-09T18:00:00.000Z")).toMatchObject({ overdue: false });
+      expect(await reviewAt("2026-09-09T18:00:00.001Z")).toMatchObject({ overdue: true });
+      await workflow.execute({ type: "reschedule_interview", interviewId: interview.id, idempotencyKey: randomUUID(), timing: { type: "fixed_slot", startAt: "2026-09-09T16:00:00.000Z", endAt: "2026-09-09T17:00:00.000Z" }, changedAt: "2026-09-09T14:00:00.000Z" }, actor);
+      expect(await reviewAt("2026-09-09T15:00:00.000Z")).toBeUndefined();
+      expect(await reviewAt("2026-09-09T18:00:00.000Z")).toMatchObject({ dueAt: "2026-09-09T20:00:00.000Z", overdue: false });
+      const form = completionForm(interview.id, "interview_review");
+      expect(await complete({ error: null, success: null }, form)).toMatchObject({ error: null, success: "面试复盘已完成。" });
+      expect(await complete({ error: null, success: null }, form)).toMatchObject({ error: null });
+      expect(await reviewAt("2026-09-10T18:00:00.000Z")).toBeUndefined();
+      const detail = await getWorkspaceQueries().read({ type: "get_job_track_detail", jobTrackId }, actor);
+      expect(detail.events.filter(event => event.kind === "InterviewReviewed")).toHaveLength(1);
+    });
+
     it("完成测评同步关联任务，重复提交不会新增第二条完成事实", async () => {
       const jobTrackId = await activeJob();
       const invited = await getJobWorkflow().execute(
@@ -166,7 +190,7 @@ describe.skipIf(process.env.DASHBOARD_INTEGRATION !== "1")(
       ).toBe(true);
     });
 
-    it("不接受复盘完成或无效标识，保持待办原状", async () => {
+    it("拒绝把普通待办 ID 当作面试 ID，以及无效标识，保持待办原状", async () => {
       const created = await getJobWorkflow().execute(
         {
           type: "create_task",
@@ -202,7 +226,7 @@ describe.skipIf(process.env.DASHBOARD_INTEGRATION !== "1")(
       ).toBe(true);
     });
 
-    it("临近面试的无截止准备任务仍被聚合，并提供正确的时间与跳转上下文", async () => {
+    it("无时间面试准备待办保留关联跳转，不借用面试时间", async () => {
       const jobTrackId = await activeJob();
       const interview = await getJobWorkflow().execute(
         {
@@ -211,8 +235,7 @@ describe.skipIf(process.env.DASHBOARD_INTEGRATION !== "1")(
           jobTrackId,
           roundLabel: "二面",
           interviewType: "视频",
-          startAt: new Date(Date.now() + 4 * 3_600_000).toISOString(),
-          endAt: new Date(Date.now() + 5 * 3_600_000).toISOString(),
+          timing: { type: "fixed_slot", startAt: new Date(Date.now() + 4 * 3_600_000).toISOString(), endAt: new Date(Date.now() + 5 * 3_600_000).toISOString() },
           receivedAt: new Date().toISOString(),
         },
         actor,
@@ -237,12 +260,12 @@ describe.skipIf(process.env.DASHBOARD_INTEGRATION !== "1")(
       ).toMatchObject({
         taskKind: "interview_prep",
         interviewId: interview.interview.id,
-        timeSource: "interview",
-        dueAt: interview.interview.startAt,
+        timeSource: "deadline",
+        dueAt: null,
       });
     });
 
-    it("跟进保存到对应岗位，更新最近进展且不改变等待较久规则", async () => {
+    it("跟进保存到对应岗位，最近进展按现行规则重置等待时长", async () => {
       const jobTrackId = await activeJob();
       const past = new Date(Date.now() - 9 * 86_400_000);
       await getJobWorkflow().execute(
@@ -252,8 +275,7 @@ describe.skipIf(process.env.DASHBOARD_INTEGRATION !== "1")(
           jobTrackId,
           roundLabel: "一面",
           interviewType: "视频",
-          startAt: past.toISOString(),
-          endAt: new Date(past.getTime() + 3_600_000).toISOString(),
+          timing: { type: "fixed_slot", startAt: past.toISOString(), endAt: new Date(past.getTime() + 3_600_000).toISOString() },
           receivedAt: new Date(past.getTime() - 86_400_000).toISOString(),
         },
         actor,
@@ -277,7 +299,7 @@ describe.skipIf(process.env.DASHBOARD_INTEGRATION !== "1")(
         detail.events.find((event) => event.kind === "GenericProgress")
           ?.payload,
       ).toMatchObject({ summary: "已联系招聘方，等待回复" });
-      expect(detail.jobTrack.attentionFlags).toContain("waiting_long");
+      expect(detail.jobTrack.attentionFlags).not.toContain("waiting_long");
       expect(
         new Date(detail.jobTrack.lastProgressAt!).getTime(),
       ).toBeGreaterThan(past.getTime());

@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type {
   ActorContext,
+  CreateJobTrackResult,
   CancelInterviewCommand,
   CancelInterviewResult,
   CancelAssessmentCommand,
@@ -21,8 +22,8 @@ import type {
   CreateTaskResult,
   UpdateTaskCommand,
   UpdateTaskResult,
-  DeletePlannedJobTrackCommand,
-  DeletePlannedJobTrackResult,
+  DeleteJobTrackCommand,
+  DeleteJobTrackResult,
   DeleteInterviewCommand,
   DeleteInterviewResult,
   EndJobTrackResult,
@@ -102,10 +103,42 @@ async function executeCommand(
   now: () => Date,
 ): Promise<JobCommandResult> {
   switch (command.type) {
+    case "create_company_jobs": {
+      if (!command.entries.length || command.entries.length > 30) throw new Error("VALIDATION_ERROR: add 1-30 jobs");
+      const jobTracks: JobTrackView[] = [];
+      const submittedAt = now().toISOString();
+      for (const [index, entry] of command.entries.entries()) {
+        const created = await executeCreateJobTrack({ ...entry, type: "create_job_track", companyName: command.companyName, idempotencyKey: command.idempotencyKey + ":" + index }, context, transaction, generateId, now);
+        if (command.lifecycle === "active") {
+          if (!entry.resumeId) throw new Error("VALIDATION_ERROR: each job requires a resume");
+          const submitted = await executeSubmitApplication({ type: "submit_application", jobTrackId: created.jobTrack.id, resumeId: entry.resumeId, submittedAt, idempotencyKey: command.idempotencyKey + ":submit:" + index }, context, transaction, generateId);
+          jobTracks.push(submitted.jobTrack);
+        } else jobTracks.push(created.jobTrack);
+      }
+      return { outcome: "company_jobs_created", jobTracks };
+    }
+    case "delete_task": {
+      const task = await transaction.findTask(context.userId, command.taskId);
+      if (!task) throw new Error("NOT_FOUND: task was not found");
+      if (task.kind === "assessment") throw new Error("CONFLICT: delete assessment through its own action");
+      await transaction.deleteTask(context.userId, task.id);
+      return { outcome: "task_deleted", taskId: task.id, jobTrackId: task.jobTrackId };
+    }
+    case "update_assessment": {
+      const existing = await transaction.findAssessmentWithTask(context.userId, command.assessmentId);
+      if (!existing) throw new Error("NOT_FOUND: assessment was not found");
+      const title = command.title.trim();
+      if (!title) throw new Error("VALIDATION_ERROR: title is required");
+      const timing = normalizeScheduledTiming(command.timing, "assessment");
+      const assessment = { ...existing.assessment, title, kind: command.assessmentKind, assessmentUrl: normalizeWebUrl(command.assessmentUrl), timing };
+      const task = timing.type === "deadline" ? { id: existing.task?.id ?? generateId(), jobTrackId: assessment.jobTrackId, interviewId: null, assessmentId: assessment.id, kind: "assessment" as const, title, deadlineAt: timing.deadlineAt, completedAt: assessment.completedAt, cancelledAt: assessment.cancelledAt } : null;
+      const updated = await transaction.updateAssessmentWithTask({ userId: context.userId, assessment, task });
+      return { outcome: "assessment_updated", ...updated };
+    }
     case "create_job_track":
       return executeCreateJobTrack(command, context, transaction, generateId, now);
     case "update_job_track_context":
-      return executeUpdateJobTrackContext(command, context, transaction);
+      return executeUpdateJobTrackContext(command, context, transaction, generateId, now);
     case "submit_application":
       return executeSubmitApplication(command, context, transaction, generateId);
     case "record_assessment_invite":
@@ -147,7 +180,8 @@ async function executeCommand(
     case "record_generic_progress":
       return executeRecordGenericProgress(command, context, transaction, generateId);
     case "delete_planned_job_track":
-      return executeDeletePlannedJobTrack(command, context, transaction);
+    case "delete_job_track":
+      return executeDeleteJobTrack(command, context, transaction);
   }
 }
 
@@ -198,6 +232,8 @@ async function executeUpdateJobTrackContext(
   command: UpdateJobTrackContextCommand,
   context: ActorContext,
   transaction: JobWorkflowTransaction,
+  generateId: () => string,
+  now: () => Date,
 ): Promise<UpdateJobTrackContextResult> {
   const existing = await transaction.findJobTrack(context.userId, command.jobTrackId);
   if (!existing) throw new Error("NOT_FOUND: job track was not found");
@@ -206,24 +242,38 @@ async function executeUpdateJobTrackContext(
   const text = command.jobDescription.text?.trim() || null;
   const imageAssetIds = command.jobDescription.imageAssetIds ?? existing.jobDescription.imageAssetIds;
   if (!companyName || !roleName) throw new Error("VALIDATION_ERROR: companyName and roleName are required");
-  if (!text && imageAssetIds.length === 0 && existing.createdVia !== "quick_import") throw new Error("VALIDATION_ERROR: jobDescription requires text or an image");
+  const preferenceRank = normalizePreference(command.preferenceRank === undefined ? existing.preferenceRank : command.preferenceRank);
+  await transaction.assertPreferenceAvailable(context.userId, companyName, preferenceRank, existing.id);
+  if (command.lifecycle && existing.lifecycle === "ended") throw new Error("CONFLICT: 已结束岗位不能在编辑中修改投递状态");
+  const lifecycle = command.lifecycle ?? existing.lifecycle;
+  const resumeId = command.resumeId ?? existing.resumeId;
+  if (command.resumeId && !await transaction.findResume(context.userId, command.resumeId)) throw new Error("NOT_FOUND: resume was not found");
+  if (command.lifecycle === "active" && existing.lifecycle === "planned" && !resumeId) throw new Error("VALIDATION_ERROR: 已投递岗位需要关联简历");
+  const submittedAt = lifecycle === "planned" ? null : command.submittedAt ? parseTimestamp(command.submittedAt, "submittedAt") : existing.submittedAt;
+  if (command.lifecycle === "active" && existing.lifecycle === "planned" && !submittedAt) throw new Error("VALIDATION_ERROR: 请填写投递时间");
   const updated = await transaction.updateJobTrackContext({
+    department: command.department === undefined ? existing.department : normalizeDepartment(command.department),
+    lifecycle: command.lifecycle, submittedAt, resumeId,
+    preferenceRank,
     userId: context.userId, jobTrackId: existing.id, version: command.version,
     companyName, roleName, jobUrl: command.jobUrl?.trim() || null,
     jobDescription: { text, imageAssetIds },
   });
   if (!updated) throw new Error("CONFLICT: job track was changed by another action");
+  if (updated.lifecycle !== existing.lifecycle || updated.submittedAt !== existing.submittedAt) {
+    await transaction.insertEvent({ id: generateId(), userId: context.userId, actionId: command.idempotencyKey, kind: "ApplicationCorrected", jobTrackId: existing.id, subjectType: "job_track", subjectId: existing.id, occurredAt: now().toISOString(), payload: { previousLifecycle: existing.lifecycle, lifecycle: updated.lifecycle, previousSubmittedAt: existing.submittedAt, submittedAt: updated.submittedAt } });
+  }
   return { outcome: "context_updated", jobTrack: toJobTrackView(updated) };
 }
 
-async function executeDeletePlannedJobTrack(
-  command: DeletePlannedJobTrackCommand,
+async function executeDeleteJobTrack(
+  command: DeleteJobTrackCommand,
   context: ActorContext,
   transaction: JobWorkflowTransaction,
-): Promise<DeletePlannedJobTrackResult> {
+): Promise<DeleteJobTrackResult> {
   const jobTrack = await transaction.findJobTrack(context.userId, command.jobTrackId);
   if (!jobTrack) throw new Error("NOT_FOUND: job track was not found");
-  if (jobTrack.lifecycle !== "planned") throw new Error("CONFLICT: only a planned job track can be deleted");
+  if (command.type === "delete_planned_job_track" && jobTrack.lifecycle !== "planned") throw new Error("CONFLICT: only a planned job track can be deleted");
   await transaction.deleteJobTrack(context.userId, jobTrack.id);
   return { outcome: "job_track_deleted", jobTrackId: jobTrack.id };
 }
@@ -374,7 +424,7 @@ async function executeCreateTask(
     task: {
       id: generateId(), jobTrackId: jobTrack?.id ?? null, interviewId, assessmentId: null,
       kind: command.kind, title,
-      deadlineAt: command.deadlineAt ? parseTimestamp(command.deadlineAt, "deadlineAt") : null,
+      ...normalizeTaskTime(command),
       completedAt: null, cancelledAt: null,
     },
   });
@@ -404,7 +454,7 @@ async function executeUpdateTask(
     userId: context.userId,
     taskId: existing.id,
     title,
-    deadlineAt: command.deadlineAt ? parseTimestamp(command.deadlineAt, "deadlineAt") : null,
+    ...normalizeTaskTime(command),
     interviewId,
   });
   return { outcome: "task_updated", task };
@@ -540,17 +590,12 @@ async function executeRescheduleInterview(
   if (existing.status !== "scheduled") {
     throw new Error("CONFLICT: only a scheduled interview can be rescheduled");
   }
-  const startAt = parseTimestamp(command.startAt, "startAt");
-  const endAt = parseTimestamp(command.endAt, "endAt");
-  if (new Date(startAt) >= new Date(endAt)) {
-    throw new Error("VALIDATION_ERROR: interview endAt must be after startAt");
-  }
+  const timing = normalizeScheduledTiming(command.timing, "interview");
 
   const interview = await transaction.updateInterviewSchedule({
     userId: context.userId,
     interviewId: existing.id,
-    startAt,
-    endAt,
+    timing,
   });
   const event = await transaction.insertEvent({
     id: generateId(),
@@ -562,10 +607,8 @@ async function executeRescheduleInterview(
     subjectId: interview.id,
     occurredAt: parseTimestamp(command.changedAt, "changedAt"),
     payload: {
-      previousStartAt: existing.startAt,
-      previousEndAt: existing.endAt,
-      startAt,
-      endAt,
+      previousTiming: existing.timing,
+      timing,
     },
   });
 
@@ -587,15 +630,11 @@ async function executeScheduleInterview(
   }
 
   const roundLabel = command.roundLabel.trim();
-  const interviewType = command.interviewType.trim();
-  if (!roundLabel || !interviewType) {
+  const interviewType = command.interviewType?.trim() || "";
+  if (!roundLabel) {
     throw new Error("VALIDATION_ERROR: roundLabel and interviewType are required");
   }
-  const startAt = parseTimestamp(command.startAt, "startAt");
-  const endAt = parseTimestamp(command.endAt, "endAt");
-  if (new Date(startAt) >= new Date(endAt)) {
-    throw new Error("VALIDATION_ERROR: interview endAt must be after startAt");
-  }
+  const timing = normalizeScheduledTiming(command.timing, "interview");
   const sequenceNo = command.sequenceNo ?? null;
   if (sequenceNo !== null && (!Number.isInteger(sequenceNo) || sequenceNo < 1)) {
     throw new Error("VALIDATION_ERROR: sequenceNo must be a positive integer");
@@ -607,8 +646,7 @@ async function executeScheduleInterview(
     sequenceNo,
     roundLabel,
     interviewType,
-    startAt,
-    endAt,
+    timing,
     meetingUrl: command.meetingUrl?.trim() || null,
     notes: command.notes?.trim() || null,
     status: "scheduled",
@@ -696,8 +734,9 @@ async function executeRecordAssessmentInvite(
   }
   const receivedAt = parseTimestamp(command.receivedAt, "receivedAt");
   const assessmentId = generateId();
-  const timing = normalizeAssessmentTiming(command.timing);
+  const timing = normalizeScheduledTiming(command.timing, "assessment");
   const assessment = {
+    assessmentUrl: normalizeWebUrl(command.assessmentUrl),
     id: assessmentId,
     jobTrackId: jobTrack.id,
     kind: command.assessmentKind,
@@ -745,18 +784,19 @@ async function executeRecordAssessmentInvite(
   };
 }
 
-function normalizeAssessmentTiming(
-  timing: RecordAssessmentInviteCommand["timing"],
-): RecordAssessmentInviteCommand["timing"] {
+function normalizeScheduledTiming<TTiming extends RecordAssessmentInviteCommand["timing"]>(
+  timing: TTiming,
+  subject: "assessment" | "interview",
+): TTiming {
   if (timing.type === "deadline") {
-    return { type: "deadline", deadlineAt: parseTimestamp(timing.deadlineAt, "deadlineAt") };
+    return { type: "deadline", deadlineAt: parseTimestamp(timing.deadlineAt, "deadlineAt") } as TTiming;
   }
   const startAt = parseTimestamp(timing.startAt, "startAt");
   const endAt = parseTimestamp(timing.endAt, "endAt");
   if (new Date(startAt) >= new Date(endAt)) {
-    throw new Error("VALIDATION_ERROR: assessment endAt must be after startAt");
+    throw new Error(`VALIDATION_ERROR: ${subject} endAt must be after startAt`);
   }
-  return { type: "fixed_slot", startAt, endAt };
+  return { type: "fixed_slot", startAt, endAt } as TTiming;
 }
 
 function parseTimestamp(value: string, field: string): string {
@@ -773,7 +813,7 @@ async function executeCreateJobTrack(
   transaction: JobWorkflowTransaction,
   generateId: () => string,
   now: () => Date,
-): Promise<JobCommandResult> {
+): Promise<CreateJobTrackResult> {
   const companyName = command.companyName.trim();
   const roleName = command.roleName.trim();
   const descriptionText = command.jobDescription.text?.trim() || null;
@@ -782,15 +822,16 @@ async function executeCreateJobTrack(
   if (!companyName || !roleName) {
     throw new Error("VALIDATION_ERROR: companyName and roleName are required");
   }
-  if (!descriptionText && imageAssetIds.length === 0) {
-    throw new Error("VALIDATION_ERROR: jobDescription requires text or an image");
-  }
 
+  const preferenceRank = normalizePreference(command.preferenceRank);
+  await transaction.assertPreferenceAvailable(context.userId, companyName, preferenceRank);
   const stored = await transaction.insertJobTrack({
+    preferenceRank,
     id: generateId(),
     userId: context.userId,
     companyName,
     roleName,
+    department: normalizeDepartment(command.department),
     lifecycle: "planned",
     jobUrl: command.jobUrl?.trim() || null,
     resumeId: null,
@@ -864,6 +905,8 @@ function toJobTrackView(jobTrack: StoredJobTrack): JobTrackView {
     id: jobTrack.id,
     companyName: jobTrack.companyName,
     roleName: jobTrack.roleName,
+    department: jobTrack.department ?? null,
+    preferenceRank: jobTrack.preferenceRank ?? null,
     lifecycle: jobTrack.lifecycle,
     jobUrl: jobTrack.jobUrl,
     resumeId: jobTrack.resumeId,
@@ -871,4 +914,31 @@ function toJobTrackView(jobTrack: StoredJobTrack): JobTrackView {
     createdAt: jobTrack.createdAt,
     version: jobTrack.version,
   };
+}
+
+function normalizePreference(value?: number | null) {
+  if (value == null) return null;
+  if (!Number.isInteger(value) || value < 1 || value > 2147483647) throw new Error("VALIDATION_ERROR: invalid preference rank");
+  return value;
+}
+function normalizeWebUrl(value?: string | null) {
+  if (!value?.trim()) return null;
+  const url = new URL(value.trim());
+  if (!["http:", "https:"].includes(url.protocol)) throw new Error("VALIDATION_ERROR: use an HTTP or HTTPS link");
+  return url.href;
+}
+
+function normalizeDepartment(value?: string | null) {
+  const department = value?.trim() || null;
+  if (department && department.length > 255) throw new Error("VALIDATION_ERROR: 部门最长 255 字");
+  return department;
+}
+function normalizeTaskTime(command: { deadlineAt?: string; startAt?: string; endAt?: string }) {
+  if (command.startAt || command.endAt) {
+    if (command.deadlineAt || !command.startAt || !command.endAt) throw new Error("VALIDATION_ERROR: 固定时段需要开始和结束时间，不能同时设置 Deadline");
+    const startAt = parseTimestamp(command.startAt, "startAt"), endAt = parseTimestamp(command.endAt, "endAt");
+    if (endAt <= startAt) throw new Error("VALIDATION_ERROR: 结束时间必须晚于开始时间");
+    return { deadlineAt: null, startAt, endAt };
+  }
+  return { deadlineAt: command.deadlineAt ? parseTimestamp(command.deadlineAt, "deadlineAt") : null, startAt: null, endAt: null };
 }

@@ -76,17 +76,17 @@ afterEach(async () => {
 async function analyzeUntilFailure(onImported?: () => void) {
   await act(async () => { root.render(createElement(FaqImportProgress, { batchId: "batch-1", onImported })); });
   await act(async () => { await vi.advanceTimersByTimeAsync(2500); });
-  expect(container.textContent).toContain("这次分析未能完成");
+  expect(document.body.textContent).toContain("这次分析未能完成");
 }
 
 function skipAiButton() {
-  const button = Array.from(container.querySelectorAll("button")).find((item) => item.textContent?.includes("跳过 AI"));
+  const button = Array.from(document.querySelectorAll("button")).find((item) => item.textContent?.includes("跳过 AI"));
   expect(button).toBeDefined();
   return button!;
 }
 
 async function clickButton(text: string) {
-  const button = Array.from(container.querySelectorAll("button")).find((item) => item.textContent === text);
+  const button = Array.from(document.querySelectorAll("button")).find((item) => item.textContent === text);
   expect(button).toBeDefined();
   await act(async () => { button!.click(); });
 }
@@ -101,14 +101,14 @@ async function fillTextArea(element: HTMLTextAreaElement, value: string) {
 async function startFromKnowledgePage() {
   await act(async () => { root.render(createElement(FaqCreateButton, { interviews: interviewOptions, experiences: [], faqCategories: [] })); });
   await clickButton("新增 FAQ");
-  const interview = container.querySelector<HTMLSelectElement>("select[name=interviewId]")!;
+  const interview = document.querySelector<HTMLSelectElement>("select[name=interviewId]")!;
   await act(async () => { interview.value = "interview-1"; interview.dispatchEvent(new Event("change", { bubbles: true })); });
-  await fillTextArea(container.querySelector("textarea")!, "测试失败后跳过 AI");
-  await fillTextArea(container.querySelectorAll("textarea")[1], "测试答案");
-  const binding = container.querySelector<HTMLSelectElement>(".faq-group-fields > label:not(.faq-group-source) select")!;
+  await fillTextArea(document.querySelector("textarea")!, "测试失败后跳过 AI");
+  await fillTextArea(document.querySelectorAll("textarea")[1], "测试答案");
+  const binding = document.querySelector<HTMLSelectElement>(".faq-group-fields > label:not(.faq-group-source) select")!;
   await act(async () => { binding.value = "unbound"; binding.dispatchEvent(new Event("change", { bubbles: true })); });
   await clickButton("保存全部 1 条 FAQ");
-  expect(container.querySelector("dialog h2")?.textContent).toBe("检查相似 FAQ？");
+  expect(document.querySelector("dialog h2")?.textContent).toBe("检查相似 FAQ？");
   await clickButton("使用 AI 分析");
 }
 
@@ -119,10 +119,10 @@ describe("FAQ import failure fallback", () => {
     await act(async () => { root.render(createElement(FaqImportProgress, { batchId: "batch-1", onReturnToEdit })); });
     await act(async () => { await vi.advanceTimersByTimeAsync(7500); });
     expect(fetchMock).toHaveBeenCalledTimes(4);
-    expect(container.textContent).toContain("这次分析未能完成");
-    expect(container.textContent).toContain("已重试 3 次");
+    expect(document.body.textContent).toContain("这次分析未能完成");
+    expect(document.body.textContent).toContain("已重试 3 次");
     expect(skipAiButton().disabled).toBe(false);
-    const edit = Array.from(container.querySelectorAll("button")).find((button) => button.textContent === "返回编辑");
+    const edit = Array.from(document.querySelectorAll("button")).find((button) => button.textContent === "返回编辑");
     expect(edit).toBeDefined();
     await act(async () => { await vi.advanceTimersByTimeAsync(30000); });
     expect(fetchMock).toHaveBeenCalledTimes(4);
@@ -138,7 +138,7 @@ describe("FAQ import failure fallback", () => {
     await act(async () => { root.render(createElement(FaqImportProgress, { batchId: "batch-1" })); });
     await act(async () => { await vi.advanceTimersByTimeAsync(15000); });
     expect(fetchMock.mock.calls.filter(([, options]) => options?.method === "POST")).toHaveLength(4);
-    expect(container.textContent).toContain("这次分析未能完成");
+    expect(document.body.textContent).toContain("这次分析未能完成");
   });
 
   it("times out a stalled status request and eventually releases the analysis screen", async () => {
@@ -148,7 +148,7 @@ describe("FAQ import failure fallback", () => {
     await act(async () => { root.render(createElement(FaqImportProgress, { batchId: "batch-1" })); });
     await act(async () => { await vi.advanceTimersByTimeAsync(60000); });
     expect(fetchMock).toHaveBeenCalledTimes(4);
-    expect(container.textContent).toContain("这次分析未能完成");
+    expect(document.body.textContent).toContain("这次分析未能完成");
     expect(skipAiButton().disabled).toBe(false);
   });
 
@@ -157,12 +157,12 @@ describe("FAQ import failure fallback", () => {
     fetchMock.mockRejectedValueOnce(new Error("offline"));
     await act(async () => { root.render(createElement(FaqImportProgress, { batchId: "batch-1" })); });
     await act(async () => { await vi.advanceTimersByTimeAsync(2500); });
-    expect(container.textContent).not.toContain("正在重试");
+    expect(document.body.textContent).not.toContain("正在重试");
     fetchMock.mockRejectedValue(new Error("offline again"));
     await act(async () => { await vi.advanceTimersByTimeAsync(7500); });
-    expect(container.textContent).toContain("AI 分析中");
+    expect(document.body.textContent).toContain("AI 分析中");
     await act(async () => { await vi.advanceTimersByTimeAsync(2500); });
-    expect(container.textContent).toContain("这次分析未能完成");
+    expect(document.body.textContent).toContain("这次分析未能完成");
   });
 
   it("does not start analysis from a status response arriving after its timeout", async () => {
@@ -182,12 +182,12 @@ describe("FAQ import failure fallback", () => {
     retryAnalysis.mockResolvedValueOnce({ error: null });
     await clickButton("重新分析");
     expect(fetchMock).toHaveBeenCalledTimes(5);
-    expect(container.textContent).toContain("AI 分析中");
+    expect(document.body.textContent).toContain("AI 分析中");
     await act(async () => { await vi.advanceTimersByTimeAsync(7500); });
     expect(fetchMock).toHaveBeenCalledTimes(8);
     await act(async () => { skipAiButton().click(); });
     expect(confirmImport).toHaveBeenCalledTimes(1);
-    expect(container.querySelector("dialog[open]")).toBeNull();
+    expect(document.querySelector("dialog[open]")).toBeNull();
   });
 
   it("releases recovery buttons when a manual retry request never returns", async () => {
@@ -197,11 +197,11 @@ describe("FAQ import failure fallback", () => {
     retryAnalysis.mockImplementationOnce(() => new Promise(() => {}));
     await clickButton("重新分析");
     await act(async () => { await vi.advanceTimersByTimeAsync(10000); });
-    expect(container.textContent).toContain("暂时无法重新分析");
+    expect(document.body.textContent).toContain("暂时无法重新分析");
     expect(skipAiButton().disabled).toBe(false);
     await clickButton("返回编辑");
     expect(onReturnToEdit).toHaveBeenCalledTimes(1);
-    expect(container.querySelector("dialog[open]")).toBeNull();
+    expect(document.querySelector("dialog[open]")).toBeNull();
   });
 
   it("returns to the original editable draft even while offline and submits the edited batch directly", async () => {
@@ -209,17 +209,17 @@ describe("FAQ import failure fallback", () => {
     await startFromKnowledgePage();
     await act(async () => { await vi.advanceTimersByTimeAsync(7500); });
     await clickButton("返回编辑");
-    expect(container.querySelector("dialog[open]")).toBeNull();
-    expect(container.querySelector("textarea")?.value).toBe("测试失败后跳过 AI");
-    expect(container.querySelector<HTMLSelectElement>(".faq-group-fields > label:not(.faq-group-source) select")?.value).toBe("unbound");
-    await fillTextArea(container.querySelector<HTMLTextAreaElement>(".faq-entry-card textarea")!, "修改后的问题");
+    expect(document.querySelector("dialog[open]")).toBeNull();
+    expect(document.querySelector("textarea")?.value).toBe("测试失败后跳过 AI");
+    expect(document.querySelector<HTMLSelectElement>(".faq-group-fields > label:not(.faq-group-source) select")?.value).toBe("unbound");
+    await fillTextArea(document.querySelector<HTMLTextAreaElement>(".faq-entry-card textarea")!, "修改后的问题");
     await clickButton("保存全部 1 条 FAQ");
     await clickButton("直接保存");
     const submitted = importEdited.mock.calls[0][0] as FormData;
     expect(submitted.get("replaceBatchId")).toBe("batch-1");
     expect(submitted.get("idempotencyKey")).not.toBe("test-import-token");
     expect(JSON.parse(String(submitted.get("groupsJson")))[0].items[0]).toMatchObject({ question: "修改后的问题", answer: "测试答案" });
-    expect(container.querySelector("dialog[open], [role=dialog]")).toBeNull();
+    expect(document.querySelector("dialog[open], [role=dialog]")).toBeNull();
     expect(fetchMock).toHaveBeenCalledTimes(4);
   });
 
@@ -227,7 +227,7 @@ describe("FAQ import failure fallback", () => {
     await startFromKnowledgePage();
     await act(async () => { await vi.advanceTimersByTimeAsync(2500); });
     await clickButton("返回编辑");
-    await fillTextArea(container.querySelector<HTMLTextAreaElement>(".faq-entry-card textarea")!, "重新分析这个问题");
+    await fillTextArea(document.querySelector<HTMLTextAreaElement>(".faq-entry-card textarea")!, "重新分析这个问题");
     await clickButton("保存全部 1 条 FAQ");
     await clickButton("使用 AI 分析");
     const submitted = beginAnalysis.mock.calls[1][0] as FormData;
@@ -245,7 +245,7 @@ describe("FAQ import failure fallback", () => {
     await clickButton("直接保存");
     await clickButton("直接保存");
     await clickButton("返回编辑");
-    await fillTextArea(container.querySelector<HTMLTextAreaElement>(".faq-entry-card textarea")!, "再次修改问题");
+    await fillTextArea(document.querySelector<HTMLTextAreaElement>(".faq-entry-card textarea")!, "再次修改问题");
     await clickButton("保存全部 1 条 FAQ");
     await clickButton("直接保存");
     const keys = importEdited.mock.calls.map((args) => (args[0] as FormData).get("idempotencyKey"));
@@ -261,17 +261,17 @@ describe("FAQ import failure fallback", () => {
       interviews: [{ id: "interview-1", companyName: "公司", roleName: "岗位", roundLabel: "一面" }], faqCategories: [],
     })); });
     await clickButton("返回编辑");
-    expect(container.querySelector("dialog[open]")).toBeNull();
-    const modal = container.querySelector<HTMLElement>(".modal-backdrop [role=dialog][aria-modal=true]");
+    expect(document.querySelector("dialog[open]")).toBeNull();
+    const modal = document.querySelector<HTMLElement>(".modal-backdrop [role=dialog][aria-modal=true]");
     expect(modal).not.toBeNull();
     expect(modal!.querySelector("h2")?.textContent).toBe("编辑待导入 FAQ");
-    expect(modal!.contains(container.querySelector(".faq-import-form"))).toBe(true);
+    expect(modal!.contains(document.querySelector(".faq-import-form"))).toBe(true);
     expect(document.body.style.overflow).toBe("hidden");
     const questions = modal!.querySelectorAll<HTMLTextAreaElement>(".faq-entry-card textarea");
     expect(questions[0].value).toBe("恢复问题");
     expect(questions[1].value).toBe("恢复答案");
-    expect(container.querySelector<HTMLSelectElement>("select[name=interviewId]")?.value).toBe("interview-1");
-    expect(Array.from(container.querySelectorAll<HTMLSelectElement>(".faq-group-fields > label:not(.faq-group-source) select")).map((select) => select.value)).toEqual(["bound", "experience-1"]);
+    expect(document.querySelector<HTMLSelectElement>("select[name=interviewId]")?.value).toBe("interview-1");
+    expect(Array.from(document.querySelectorAll<HTMLSelectElement>(".faq-group-fields > label:not(.faq-group-source) select")).map((select) => select.value)).toEqual(["bound", "experience-1"]);
     await fillTextArea(questions[0], "关闭后保留的问题");
     await fillTextArea(questions[1], "关闭后保留的答案");
     const interview = modal!.querySelector<HTMLSelectElement>("select[name=interviewId]")!;
@@ -280,21 +280,21 @@ describe("FAQ import failure fallback", () => {
     await act(async () => {
       if (closeWith === "close button") modal!.querySelector<HTMLButtonElement>("button[aria-label='关闭弹窗']")!.click();
       else if (closeWith === "Escape") window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
-      else container.querySelector(".modal-backdrop")!.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+      else document.querySelector(".modal-backdrop")!.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
     });
-    expect(container.querySelector<HTMLElement>(".modal-backdrop")?.style.display).toBe("none");
+    expect(document.querySelector<HTMLElement>(".modal-backdrop")?.style.display).toBe("none");
     expect(document.body.style.overflow).toBe("");
-    expect(container.querySelector("dialog[open]")).toBeNull();
+    expect(document.querySelector("dialog[open]")).toBeNull();
     await act(async () => { await vi.advanceTimersByTimeAsync(10000); });
     await clickButton("继续编辑");
-    expect(container.querySelector<HTMLElement>(".modal-backdrop")?.style.display).not.toBe("none");
+    expect(document.querySelector<HTMLElement>(".modal-backdrop")?.style.display).not.toBe("none");
     expect(document.body.style.overflow).toBe("hidden");
-    expect(container.querySelector<HTMLTextAreaElement>(".faq-entry-card textarea")?.value).toBe("关闭后保留的问题");
-    expect(container.querySelector<HTMLSelectElement>("select[name=interviewId]")?.value).toBe("");
+    expect(document.querySelector<HTMLTextAreaElement>(".faq-entry-card textarea")?.value).toBe("关闭后保留的问题");
+    expect(document.querySelector<HTMLSelectElement>("select[name=interviewId]")?.value).toBe("");
     expect(fetchMock).toHaveBeenCalledTimes(requestsBeforeClose);
     expect(router.replace).not.toHaveBeenCalled();
     await clickButton("保存全部 1 条 FAQ");
-    expect(container.querySelector("dialog[open]")).toBeNull();
+    expect(document.querySelector("dialog[open]")).toBeNull();
     expect(interview.getAttribute("aria-invalid")).toBe("true");
     await act(async () => { interview.value = "interview-1"; interview.dispatchEvent(new Event("change", { bubbles: true })); });
     await clickButton("保存全部 1 条 FAQ");
@@ -304,7 +304,7 @@ describe("FAQ import failure fallback", () => {
     expect(submitted.get("interviewId")).toBe("interview-1");
     expect(JSON.parse(String(submitted.get("groupsJson")))[0].items[0]).toMatchObject({ question: "关闭后保留的问题", answer: "关闭后保留的答案" });
     expect(beginAnalysis).not.toHaveBeenCalled();
-    expect(container.querySelector("dialog[open], [role=dialog]")).toBeNull();
+    expect(document.querySelector("dialog[open], [role=dialog]")).toBeNull();
     expect(document.body.style.overflow).toBe("");
     expect(router.replace).toHaveBeenLastCalledWith("/faq?imported=1&merged=0");
   });
@@ -312,35 +312,35 @@ describe("FAQ import failure fallback", () => {
   it("closes both dialogs after importing from the knowledge page and starts a fresh form next time", async () => {
     await act(async () => { root.render(createElement(FaqCreateButton, { interviews: interviewOptions, experiences: [], faqCategories: [] })); });
     const clickButton = async (text: string) => {
-      const button = Array.from(container.querySelectorAll("button")).find((item) => item.textContent === text);
+      const button = Array.from(document.querySelectorAll("button")).find((item) => item.textContent === text);
       expect(button).toBeDefined();
       await act(async () => { button!.click(); });
     };
     await clickButton("新增 FAQ");
-    const interview = container.querySelector<HTMLSelectElement>("select[name=interviewId]")!;
+    const interview = document.querySelector<HTMLSelectElement>("select[name=interviewId]")!;
     await act(async () => { interview.value = "interview-1"; interview.dispatchEvent(new Event("change", { bubbles: true })); });
-    const blocks = container.querySelector("textarea")!;
+    const blocks = document.querySelector("textarea")!;
     await act(async () => {
       Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(blocks, "测试失败后跳过 AI");
       blocks.dispatchEvent(new Event("input", { bubbles: true }));
     });
-    const binding = container.querySelector<HTMLSelectElement>(".faq-group-fields > label:not(.faq-group-source) select")!;
+    const binding = document.querySelector<HTMLSelectElement>(".faq-group-fields > label:not(.faq-group-source) select")!;
     await act(async () => {
       binding.value = "unbound";
       binding.dispatchEvent(new Event("change", { bubbles: true }));
     });
     await clickButton("保存全部 1 条 FAQ");
-    expect(container.querySelector("dialog h2")?.textContent).toBe("检查相似 FAQ？");
+    expect(document.querySelector("dialog h2")?.textContent).toBe("检查相似 FAQ？");
     await clickButton("使用 AI 分析");
     await act(async () => { await vi.advanceTimersByTimeAsync(2500); });
-    expect(container.textContent).toContain("这次分析未能完成");
+    expect(document.body.textContent).toContain("这次分析未能完成");
     await act(async () => { skipAiButton().click(); });
     await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
-    expect(container.querySelector("dialog[open], [role=dialog]")).toBeNull();
+    expect(document.querySelector("dialog[open], [role=dialog]")).toBeNull();
     expect(router.replace).toHaveBeenLastCalledWith("/faq?imported=1&merged=0");
     await clickButton("新增 FAQ");
-    expect(container.querySelector("textarea")?.value).toBe("");
-    expect(container.querySelector("dialog[open]")).toBeNull();
+    expect(document.querySelector("textarea")?.value).toBe("");
+    expect(document.querySelector("dialog[open]")).toBeNull();
   });
 
   it("closes the analysis dialog after skipping AI even when navigation preserves the component", async () => {
@@ -352,8 +352,8 @@ describe("FAQ import failure fallback", () => {
     expect(confirmImport).toHaveBeenCalledWith("batch-1", { newItemIds: [], merges: [] }, true);
     expect(retryAnalysis).not.toHaveBeenCalled();
     expect(fetchMock.mock.calls.filter(([, options]) => options?.method === "POST")).toHaveLength(1);
-    expect(container.textContent).not.toContain("AI 分析中");
-    expect(container.querySelector("dialog[open]")).toBeNull();
+    expect(document.body.textContent).not.toContain("AI 分析中");
+    expect(document.querySelector("dialog[open]")).toBeNull();
     expect(router.replace).toHaveBeenLastCalledWith("/faq?imported=1&merged=0");
     expect(onImported).toHaveBeenCalledTimes(1);
   });
@@ -369,7 +369,7 @@ describe("FAQ import failure fallback", () => {
     await act(async () => {
       oldPoll.resolve({ ok: true, json: async () => ({ status: "pending", error: null, completedCount: 0, totalCount: 1 }) });
     });
-    const whileSaving = container.textContent;
+    const whileSaving = document.body.textContent;
     const analysisStarts = fetchMock.mock.calls.filter(([, options]) => options?.method === "POST").length;
     await act(async () => {
       saving.resolve({ result: { faqIds: ["faq-1"], importedCount: 1, mergedCount: 0 }, error: null });
@@ -380,14 +380,14 @@ describe("FAQ import failure fallback", () => {
     expect(whileSaving).not.toContain("AI 分析中");
     expect(analysisStarts).toBe(1);
     expect(fetchMock).toHaveBeenCalledTimes(requestsAfterSave);
-    expect(container.querySelector("dialog[open]")).toBeNull();
+    expect(document.querySelector("dialog[open]")).toBeNull();
   });
 
   it("keeps the fallback available when saving fails without triggering AI", async () => {
     await analyzeUntilFailure();
     confirmImport.mockResolvedValueOnce({ result: null, error: "保存失败，请重试" });
     await act(async () => { skipAiButton().click(); });
-    expect(container.textContent).toContain("保存失败，请重试");
+    expect(document.body.textContent).toContain("保存失败，请重试");
     expect(skipAiButton().disabled).toBe(false);
     expect(router.replace).not.toHaveBeenCalled();
     expect(retryAnalysis).not.toHaveBeenCalled();
@@ -400,7 +400,7 @@ describe("FAQ import failure fallback", () => {
     await act(async () => { root.render(createElement(FaqImportProgress, { batchId: "batch-1", onImported })); });
     serverStatus = "completed";
     await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
-    expect(container.querySelector("dialog[open]")).toBeNull();
+    expect(document.querySelector("dialog[open]")).toBeNull();
     expect(onImported).toHaveBeenCalledTimes(1);
     expect(router.replace).toHaveBeenLastCalledWith("/faq");
   });
@@ -408,7 +408,7 @@ describe("FAQ import failure fallback", () => {
   it("only starts analysis again when the user chooses retry", async () => {
     await analyzeUntilFailure();
     retryAnalysis.mockImplementationOnce(async () => { serverStatus = "pending"; return { error: null }; });
-    const retry = Array.from(container.querySelectorAll("button")).find((item) => item.textContent === "重新分析")!;
+    const retry = Array.from(document.querySelectorAll("button")).find((item) => item.textContent === "重新分析")!;
     await act(async () => { retry.click(); });
     await act(async () => { await vi.advanceTimersByTimeAsync(2500); });
     expect(retryAnalysis).toHaveBeenCalledWith("batch-1");

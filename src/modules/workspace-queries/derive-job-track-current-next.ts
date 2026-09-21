@@ -13,8 +13,9 @@ type CurrentNextInterview = {
   id: string;
   roundLabel: string;
   interviewType: string;
-  startAt: string;
-  endAt: string;
+  timing:
+    | { type: "deadline"; deadlineAt: string }
+    | { type: "fixed_slot"; startAt: string; endAt: string };
   status: "scheduled" | "cancelled";
   occurredAt: string | null;
   reviewedAt: string | null;
@@ -26,6 +27,8 @@ type CurrentNextTask = {
   kind: "generic" | "interview_prep" | "assessment";
   title: string;
   deadlineAt: string | null;
+  startAt?: string | null;
+  endAt?: string | null;
   completedAt: string | null;
   cancelledAt: string | null;
 };
@@ -103,31 +106,36 @@ export function deriveJobTrackCurrentNext(
         };
       }),
     ...facts.interviews
-      .filter((item) => item.status === "scheduled" && timestamp(item.startAt) > nowMs)
-      .map((item) => ({
-        title: `${item.roundLabel} · ${item.interviewType}`,
-        detail: "已安排面试",
-        scheduledAt: item.startAt,
-        sortAt: timestamp(item.startAt),
-        priority: 1,
-      })),
+      .filter((item) => item.status === "scheduled" && !item.occurredAt && (item.timing.type === "deadline" || timestamp(item.timing.startAt) > nowMs))
+      .map((item) => {
+        const scheduledAt = item.timing.type === "deadline" ? item.timing.deadlineAt : item.timing.startAt;
+        const overdue = item.timing.type === "deadline" && timestamp(scheduledAt) < nowMs;
+        return {
+          title: [item.roundLabel, item.interviewType].filter(Boolean).join(" · "),
+          detail: item.timing.type === "deadline" ? (overdue ? "已超过截止时间" : "等待在截止前完成") : "已安排固定时间",
+          scheduledAt,
+          sortAt: timestamp(scheduledAt),
+          priority: overdue ? 0 : 1,
+        };
+      }),
     ...facts.tasks
       .filter((item) => {
         if (item.kind === "assessment" || item.completedAt || item.cancelledAt) return false;
         if (item.kind !== "interview_prep") return true;
         const interview = facts.interviews.find((candidate) => candidate.id === item.interviewId);
-        return Boolean(interview && interview.status === "scheduled" && timestamp(interview.startAt) > nowMs);
+        return Boolean(interview && interview.status === "scheduled" && !interview.occurredAt && timestamp(interview.timing.type === "deadline" ? interview.timing.deadlineAt : interview.timing.startAt) > nowMs);
       })
       .map((item) => {
-        const at = item.deadlineAt ? timestamp(item.deadlineAt) : Number.POSITIVE_INFINITY;
+        const scheduledAt = item.startAt ?? item.deadlineAt;
+        const at = scheduledAt ? timestamp(scheduledAt) : Number.POSITIVE_INFINITY;
         return {
           title: item.title,
-          detail: item.deadlineAt
+          detail: item.startAt ? (timestamp(item.endAt!) < nowMs ? "已超过结束时间" : at <= nowMs ? "进行中" : "已安排固定时间") : item.deadlineAt
             ? at < nowMs ? "已超过截止时间" : "等待完成"
             : "待完成 · 无截止时间",
-          scheduledAt: item.deadlineAt,
+          scheduledAt,
           sortAt: at,
-          priority: item.deadlineAt ? (at < nowMs ? 0 : 1) : 2,
+          priority: scheduledAt ? (timestamp(item.endAt ?? scheduledAt) < nowMs ? 0 : 1) : 2,
         };
       }),
   ].sort((left, right) => left.priority - right.priority || left.sortAt - right.sortAt);

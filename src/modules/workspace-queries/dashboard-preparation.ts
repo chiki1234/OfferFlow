@@ -9,7 +9,9 @@ type PreparationTask = {
 type PreparationInterview = {
   id: string;
   status: "scheduled" | "cancelled";
-  startAt: string | Date;
+  timing:
+    | { type: "deadline"; deadlineAt: string | Date }
+    | { type: "fixed_slot"; startAt: string | Date; endAt: string | Date };
 };
 
 export function findImminentInterviewPreparationTasks<TTask extends PreparationTask>(
@@ -25,7 +27,7 @@ export function findImminentInterviewPreparationTasks<TTask extends PreparationT
     if (task.kind !== "interview_prep" || task.completedAt || task.cancelledAt || !task.interviewId) return [];
     const interview = interviewsById.get(task.interviewId);
     if (!interview || interview.status !== "scheduled") return [];
-    const startMs = new Date(interview.startAt).getTime();
+    const startMs = new Date(interview.timing.type === "deadline" ? interview.timing.deadlineAt : interview.timing.startAt).getTime();
     if (startMs <= nowMs || startMs > endMs) return [];
     return [{ task, dueAt: new Date(startMs).toISOString() }];
   }).sort((left, right) => left.dueAt.localeCompare(right.dueAt));

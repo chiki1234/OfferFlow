@@ -59,12 +59,13 @@ export async function getKnowledgeLibrary(userId: string, input: { query?: strin
       id: interviews.id,
       roundLabel: interviews.roundLabel,
       startAt: interviews.startAt,
+      deadlineAt: interviews.deadlineAt,
       companyName: jobTracks.companyName,
-      roleName: jobTracks.roleName,
+      department: jobTracks.department, roleName: jobTracks.roleName,
     }).from(interviews)
       .innerJoin(jobTracks, eq(jobTracks.id, interviews.jobTrackId))
       .where(and(eq(jobTracks.userId, userId), eq(interviews.status, "scheduled")))
-      .orderBy(desc(interviews.startAt)),
+      .orderBy(desc(sql`coalesce(${interviews.startAt}, ${interviews.deadlineAt})`)),
     db.select({ id: resumes.id, name: resumes.name }).from(resumes)
       .where(eq(resumes.userId, userId)).orderBy(desc(resumes.createdAt)),
     db.select({ resumeId: resumeExperiences.resumeId, experienceId: resumeExperiences.experienceId })
@@ -80,7 +81,7 @@ export async function getKnowledgeLibrary(userId: string, input: { query?: strin
     totalFaqCount: faqCountRows[0]?.count ?? 0,
     experiences: experienceRows,
     faqs: await withFaqFacts(userId, faqRows.map((row) => ({ ...row, createdAt: row.createdAt.toISOString() }))),
-    interviews: interviewRows.map((row) => ({ ...row, startAt: row.startAt.toISOString() })),
+    interviews: interviewRows.map(({ deadlineAt, ...row }) => ({ ...row, startAt: requireDate(row.startAt ?? deadlineAt).toISOString() })),
     resumes: resumeRows.map((resume) => ({
       ...resume,
       experienceIds: linkRows.filter((link) => link.resumeId === resume.id).map((link) => link.experienceId),
@@ -146,6 +147,8 @@ export async function getInterviewKnowledgeDetail(userId: string, interviewId: s
     id: interviews.id,
     roundLabel: interviews.roundLabel,
     interviewType: interviews.interviewType,
+    timingType: interviews.timingType,
+    deadlineAt: interviews.deadlineAt,
     startAt: interviews.startAt,
     endAt: interviews.endAt,
     meetingUrl: interviews.meetingUrl,
@@ -159,7 +162,7 @@ export async function getInterviewKnowledgeDetail(userId: string, interviewId: s
     transcriptAssetMimeType: assets.mimeType,
     jobTrackId: jobTracks.id,
     companyName: jobTracks.companyName,
-    roleName: jobTracks.roleName,
+    department: jobTracks.department, roleName: jobTracks.roleName,
     resumeId: jobTracks.resumeId,
     jobDescription: jobDescriptions.textContent,
     resumeName: resumes.name,
@@ -195,7 +198,7 @@ export async function getInterviewKnowledgeDetail(userId: string, interviewId: s
     db.select({
       id: tasks.id,
       title: tasks.title,
-      deadlineAt: tasks.deadlineAt,
+      startAt: tasks.startAt, endAt: tasks.endAt, deadlineAt: tasks.deadlineAt,
       completedAt: tasks.completedAt,
       cancelledAt: tasks.cancelledAt,
     }).from(tasks)
@@ -203,11 +206,13 @@ export async function getInterviewKnowledgeDetail(userId: string, interviewId: s
       .orderBy(asc(tasks.completedAt), asc(tasks.cancelledAt), asc(tasks.deadlineAt)),
     getFaqCategoryConfig(userId),
   ]);
+  const { timingType, deadlineAt, startAt, endAt, ...interviewDetails } = interview;
   return {
     interview: {
-      ...interview,
-      startAt: interview.startAt.toISOString(),
-      endAt: interview.endAt.toISOString(),
+      ...interviewDetails,
+      timing: timingType === "deadline"
+        ? { type: "deadline" as const, deadlineAt: requireDate(deadlineAt).toISOString() }
+        : { type: "fixed_slot" as const, startAt: requireDate(startAt).toISOString(), endAt: requireDate(endAt).toISOString() },
       occurredAt: interview.occurredAt?.toISOString() ?? null,
       reviewedAt: interview.reviewedAt?.toISOString() ?? null,
     },
@@ -216,9 +221,14 @@ export async function getInterviewKnowledgeDetail(userId: string, interviewId: s
     experiences: experienceRows,
     tasks: taskRows.map((task) => ({
       ...task,
-      deadlineAt: task.deadlineAt?.toISOString() ?? null,
+      startAt: task.startAt?.toISOString() ?? null, endAt: task.endAt?.toISOString() ?? null, deadlineAt: task.deadlineAt?.toISOString() ?? null,
       completedAt: task.completedAt?.toISOString() ?? null,
       cancelledAt: task.cancelledAt?.toISOString() ?? null,
     })),
   };
+}
+
+function requireDate(value: Date | null): Date {
+  if (!value) throw new Error("INTERNAL_ERROR: interview timing date is missing");
+  return value;
 }
