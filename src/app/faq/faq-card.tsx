@@ -24,15 +24,15 @@ export function FaqCard({ faq, experiences, faqCategories }: {
     ? faq.experienceName ?? experiences.find((experience) => experience.id === faq.experienceId)?.name ?? "已绑定经历"
     : faq.category ?? "暂不设置";
 
-  const footer = <div className="faq-card-bottom">
+  const footer = <div className="faq-card-bottom" key="footer">
     <FaqSources sources={faq.sources} />
     <FaqEditor faq={faq} experiences={experiences} faqCategories={faqCategories} incomplete={!settingsComplete} />
   </div>;
 
   return <FaqAnswerDisclosure answer={faq.answer} footer={footer} question={faq.question}>
-    <div className={settingsComplete ? "faq-card-meta" : "faq-card-meta incomplete"}>
+    <div className={settingsComplete ? "faq-card-meta" : "faq-card-meta incomplete"} key="meta">
       <span>{settingLabel}</span><FaqFrequency count={faq.frequency} />
     </div>
-    <h3>{faq.question}</h3>
+    <h3 key="question">{faq.question}</h3>
   </FaqAnswerDisclosure>;
 }
