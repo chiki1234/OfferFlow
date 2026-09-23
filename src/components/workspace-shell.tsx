@@ -24,6 +24,13 @@ function isNavigationActive(pathname: string, href: string) {
 
 export function WorkspaceShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const handleNavigation = (event: { preventDefault(): void }, href: string) => {
+    if (href !== "/calendar" || pathname !== "/calendar" || window.location.search) return;
+    const today = document.getElementById("calendar-today");
+    if (!today) return;
+    event.preventDefault();
+    today.scrollIntoView({ behavior: "instant", block: "start", inline: "center" });
+  };
   if (["/login", "/register", "/forgot-password", "/reset-password"].includes(pathname)) return <>{children}</>;
 
   return (
@@ -37,7 +44,7 @@ export function WorkspaceShell({ children }: { children: React.ReactNode }) {
         </Link>
         <nav className="sidebar-nav" aria-label="一级导航">
           {navigation.map(({ href, label, icon: Icon }) => (
-            <Link aria-current={isNavigationActive(pathname, href) ? "page" : undefined} className={isNavigationActive(pathname, href) ? "active" : undefined} href={href} key={href}>
+            <Link aria-current={isNavigationActive(pathname, href) ? "page" : undefined} className={isNavigationActive(pathname, href) ? "active" : undefined} href={href === "/calendar" ? `${href}#calendar-today` : href} onNavigate={(event) => handleNavigation(event, href)} key={href}>
               <Icon size={19} />
               <span>{label}</span>
             </Link>
@@ -55,7 +62,7 @@ export function WorkspaceShell({ children }: { children: React.ReactNode }) {
       <GlobalQuickActions />
       <nav className="mobile-nav" aria-label="移动端一级导航">
         {navigation.map(({ href, label, icon: Icon }) => (
-          <Link aria-current={isNavigationActive(pathname, href) ? "page" : undefined} className={isNavigationActive(pathname, href) ? "active" : undefined} href={href} key={href}>
+          <Link aria-current={isNavigationActive(pathname, href) ? "page" : undefined} className={isNavigationActive(pathname, href) ? "active" : undefined} href={href === "/calendar" ? `${href}#calendar-today` : href} onNavigate={(event) => handleNavigation(event, href)} key={href}>
             <Icon size={19} />
             <span>{label}</span>
           </Link>

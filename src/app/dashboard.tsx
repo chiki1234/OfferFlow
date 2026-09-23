@@ -251,7 +251,7 @@ export function Dashboard({
             title="未来 7 天"
             count={upcoming.length}
           >
-            <Link className="dashboard-text-button" href="/calendar">
+            <Link className="dashboard-text-button" href="/calendar#calendar-today">
               查看日历
               <ChevronRight size={16} />
             </Link>
