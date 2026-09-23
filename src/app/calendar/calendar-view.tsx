@@ -9,6 +9,19 @@ import { calendarRange, itemsForDay, shanghaiDay, shiftDay } from "@/modules/wor
 export function CalendarView({ range, items, mode, today }: { range: ReturnType<typeof calendarRange>; items: CalendarItem[]; mode: "week" | "month"; today: string }) {
   const todayRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const viewRef = useRef<HTMLDivElement>(null);
+  const headerRef = useRef<HTMLDivElement>(null);
+  const weekdayScrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const header = headerRef.current;
+    if (!header) return;
+    const updateHeight = () => viewRef.current?.style.setProperty("--calendar-header-height", `${header.getBoundingClientRect().height}px`);
+    updateHeight();
+    const observer = new ResizeObserver(updateHeight);
+    observer.observe(header);
+    return () => observer.disconnect();
+  }, []);
   const showingCurrentPeriod = mode === "month"
     ? range.selected.slice(0, 7) === today.slice(0, 7)
     : today >= range.first && today < shiftDay(range.first, range.days);
@@ -23,7 +36,8 @@ export function CalendarView({ range, items, mode, today }: { range: ReturnType<
       left: container.scrollLeft + dayRect.left - containerRect.left - (container.clientWidth - dayRect.width) / 2,
       behavior: "instant",
     });
-    window.scrollTo({ top: window.scrollY + dayRect.top - 24, behavior: "instant" });
+    const headerHeight = headerRef.current?.getBoundingClientRect().height ?? 0;
+    window.scrollTo({ top: window.scrollY + dayRect.top - headerHeight - 12, behavior: "instant" });
   }, []);
 
   useEffect(() => {
@@ -36,28 +50,38 @@ export function CalendarView({ range, items, mode, today }: { range: ReturnType<
 
   const currentWeek = calendarRange(new Date(`${today}T12:00:00+08:00`), today, "week");
   const url = (date: string, view = mode) => `/calendar?view=${view}&date=${date}`;
-  return <>
-    <div className="calendar-toolbar">
-      <div className="section-actions">
-        <Link className="secondary-button" href={url(range.previous)}>← 上一{mode === "week" ? "周" : "月"}</Link>
-        <strong>{range.label}</strong>
-        <Link className="secondary-button" href={url(range.next)}>下一{mode === "week" ? "周" : "月"} →</Link>
-        <Link className="secondary-button" href={`${url(today)}#calendar-today`} onNavigate={(event) => {
-          if (range.selected === today) {
-            event.preventDefault();
-            scrollToToday();
-          }
-        }}>今天</Link>
+  return <div ref={viewRef} className="calendar-view">
+    <div ref={headerRef} className="calendar-sticky-header">
+      <div className="calendar-toolbar">
+        <div className="section-actions">
+          <Link className="secondary-button" href={url(range.previous)}>← 上一{mode === "week" ? "周" : "月"}</Link>
+          <strong>{range.label}</strong>
+          <Link className="secondary-button" href={url(range.next)}>下一{mode === "week" ? "周" : "月"} →</Link>
+          <Link className="secondary-button" href={`${url(today)}#calendar-today`} onNavigate={(event) => {
+            if (range.selected === today) {
+              event.preventDefault();
+              scrollToToday();
+            }
+          }}>今天</Link>
+        </div>
+        <CompanyJobSearch />
+        <nav className="tab-list" aria-label="日历视图">
+          <Link className={mode === "week" ? "active" : ""} aria-current={mode === "week" ? "page" : undefined} href={url(range.selected, "week")}>周</Link>
+          <Link className={mode === "month" ? "active" : ""} aria-current={mode === "month" ? "page" : undefined} href={url(range.selected, "month")}>月</Link>
+        </nav>
       </div>
-      <CompanyJobSearch />
-      <nav className="tab-list" aria-label="日历视图">
-        <Link className={mode === "week" ? "active" : ""} aria-current={mode === "week" ? "page" : undefined} href={url(range.selected, "week")}>周</Link>
-        <Link className={mode === "month" ? "active" : ""} aria-current={mode === "month" ? "page" : undefined} href={url(range.selected, "month")}>月</Link>
-      </nav>
+      <div ref={weekdayScrollRef} className="calendar-weekday-scroll" onScroll={(event) => {
+        if (scrollRef.current) scrollRef.current.scrollLeft = event.currentTarget.scrollLeft;
+      }}>
+        <div className="calendar-weekdays">
+          {["一", "二", "三", "四", "五", "六", "日"].map(day => <div className="calendar-weekday" key={day}>周{day}</div>)}
+        </div>
+      </div>
     </div>
-    <div ref={scrollRef} className="calendar-scroll" role="region" aria-label="日历日期网格" tabIndex={0}>
+    <div ref={scrollRef} className="calendar-scroll" role="region" aria-label="日历日期网格" tabIndex={0} onScroll={(event) => {
+      if (weekdayScrollRef.current) weekdayScrollRef.current.scrollLeft = event.currentTarget.scrollLeft;
+    }}>
       <section className={`surface-card calendar-grid ${mode}`} aria-label={mode === "week" ? "周日历" : "月日历"}>
-        {["一", "二", "三", "四", "五", "六", "日"].map(day => <div className="calendar-weekday" key={day}>周{day}</div>)}
         {Array.from({ length: range.days }, (_, index) => {
           const day = shiftDay(range.first, index);
           const dayItems = itemsForDay(items, day).sort((a, b) => Date.parse(a.startAt) - Date.parse(b.startAt) || a.id.localeCompare(b.id));
@@ -84,7 +108,7 @@ export function CalendarView({ range, items, mode, today }: { range: ReturnType<
         })}
       </section>
     </div>
-  </>;
+  </div>;
 }
 
 const clockFormat = new Intl.DateTimeFormat("zh-CN", { timeZone: "Asia/Shanghai", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
