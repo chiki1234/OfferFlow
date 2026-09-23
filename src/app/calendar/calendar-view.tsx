@@ -1,11 +1,27 @@
 "use client";
 
 import Link from "next/link";
+import { useCallback, useEffect, useRef } from "react";
 import { CompanyJobSearch } from "@/components/company-job-search";
 import type { CalendarItem } from "@/modules/workspace-queries/interface";
 import { calendarRange, itemsForDay, shanghaiDay, shiftDay } from "@/modules/workspace-queries/calendar-range";
 
 export function CalendarView({ range, items, mode, today }: { range: ReturnType<typeof calendarRange>; items: CalendarItem[]; mode: "week" | "month"; today: string }) {
+  const todayRef = useRef<HTMLTimeElement>(null);
+  const showingCurrentPeriod = mode === "month"
+    ? range.selected.slice(0, 7) === today.slice(0, 7)
+    : today >= range.first && today < shiftDay(range.first, range.days);
+
+  const scrollToToday = useCallback(() => {
+    todayRef.current?.scrollIntoView({ behavior: "instant", block: "center", inline: "center" });
+  }, []);
+
+  useEffect(() => {
+    if (!showingCurrentPeriod) return;
+    const frame = requestAnimationFrame(scrollToToday);
+    return () => cancelAnimationFrame(frame);
+  }, [mode, range.selected, showingCurrentPeriod, today, scrollToToday]);
+
   const currentWeek = calendarRange(new Date(`${today}T12:00:00+08:00`), today, "week");
   const url = (date: string, view = mode) => `/calendar?view=${view}&date=${date}`;
   return <>
@@ -14,7 +30,7 @@ export function CalendarView({ range, items, mode, today }: { range: ReturnType<
         <Link className="secondary-button" href={url(range.previous)}>← 上一{mode === "week" ? "周" : "月"}</Link>
         <strong>{range.label}</strong>
         <Link className="secondary-button" href={url(range.next)}>下一{mode === "week" ? "周" : "月"} →</Link>
-        <Link className="secondary-button" href={url(today)}>今天</Link>
+        <Link className="secondary-button" href={url(today)} scroll={false} onClick={() => { if (showingCurrentPeriod) scrollToToday(); }}>今天</Link>
       </div>
       <CompanyJobSearch />
       <nav className="tab-list" aria-label="日历视图">
@@ -30,7 +46,7 @@ export function CalendarView({ range, items, mode, today }: { range: ReturnType<
           const dayItems = itemsForDay(items, day).sort((a, b) => Date.parse(a.startAt) - Date.parse(b.startAt) || a.id.localeCompare(b.id));
           const inCurrentWeek = day >= currentWeek.first && day < shiftDay(currentWeek.first, 7);
           return <div key={day} className={`calendar-day${inCurrentWeek ? " current-week" : ""}${day === today ? " today" : ""}${mode === "month" && day.slice(0, 7) !== range.selected.slice(0, 7) ? " outside" : ""}`} aria-label={`${day}，${dayItems.length} 项事项`}>
-            <time className="calendar-date" dateTime={day} aria-current={day === today ? "date" : undefined}>{Number(day.slice(-2))}</time>
+            <time ref={day === today ? todayRef : undefined} className="calendar-date" dateTime={day} aria-current={day === today ? "date" : undefined}>{Number(day.slice(-2))}</time>
             <div className="calendar-day-events">{dayItems.map(item => {
               const time = eventTime(item, day);
               const company = item.companyName ?? "通用待办";
