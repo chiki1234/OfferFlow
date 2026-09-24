@@ -31,7 +31,7 @@ export default async function JobsPage({
   const params = await searchParams;
   const selected = lifecycleTabs.some((tab) => tab.key === params.tab)
     ? (params.tab as (typeof lifecycleTabs)[number]["key"])
-    : "planned";
+    : "active";
   const query = (params.q ?? "").trim().toLocaleLowerCase();
   const actor = await getCurrentActor();
   const [view, resumes, experiences, companies] = await Promise.all([
