@@ -33,7 +33,7 @@ export default async function InterviewDetailPage({ params }: { params: Promise<
     <Link className="back-link" href={`/jobs/${interview.jobTrackId}`}><ArrowLeft size={16} />返回岗位</Link>
     <header className="page-heading">
       <div><p className="eyebrow">面试准备与复盘</p><h1>{[interview.roundLabel, interview.interviewType].filter(Boolean).join(" · ")}</h1><p className="page-description">{interview.companyName}{interview.department ? ` · ${interview.department}` : ""} · {interview.roleName} · {formatInterviewTiming(interview.timing)}</p></div>
-      <div className="section-actions">{interview.meetingUrl && <a className="primary-button" href={interview.meetingUrl} rel="noreferrer" target="_blank"><Video size={17} />进入会议</a>}{interview.status === "scheduled" && <ActionDialog label="修改时间"><InterviewScheduleEditor jobTrackId={interview.jobTrackId} interviewId={interview.id} token={randomUUID()} timing={interview.timing} /></ActionDialog>}</div>
+      <div className="section-actions">{interview.status === "scheduled" && interview.timing.type === "deadline" && !interview.occurredAt && !interview.reviewedAt && <StatusActionButton intent="confirm_interview_occurred" jobTrackId={interview.jobTrackId} subjectId={interview.id} token={randomUUID()} label="完成" />}{interview.meetingUrl && <a className="primary-button" href={interview.meetingUrl} rel="noreferrer" target="_blank"><Video size={17} />进入会议</a>}{interview.status === "scheduled" && <ActionDialog label="修改时间"><InterviewScheduleEditor jobTrackId={interview.jobTrackId} interviewId={interview.id} token={randomUUID()} timing={interview.timing} /></ActionDialog>}</div>
     </header>
 
     <div className="interview-detail-layout">

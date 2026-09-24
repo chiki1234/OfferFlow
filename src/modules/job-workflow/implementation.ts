@@ -519,6 +519,17 @@ async function executeConfirmInterviewOccurred(
   if (existing.status === "cancelled") throw new Error("CONFLICT: a cancelled interview cannot occur");
   if (existing.occurredAt) throw new Error("CONFLICT: interview occurrence is already confirmed");
   const occurredAt = parseTimestamp(command.occurredAt, "occurredAt");
+  if (existing.timing.type === "deadline") {
+    await transaction.updateInterviewSchedule({
+      userId: context.userId,
+      interviewId: existing.id,
+      timing: {
+        type: "fixed_slot",
+        startAt: new Date(new Date(occurredAt).getTime() - 60 * 60 * 1000).toISOString(),
+        endAt: occurredAt,
+      },
+    });
+  }
   const interview = await transaction.markInterviewOccurred({
     userId: context.userId,
     interviewId: existing.id,
@@ -527,7 +538,8 @@ async function executeConfirmInterviewOccurred(
   const event = await transaction.insertEvent({
     id: generateId(), userId: context.userId, actionId: command.idempotencyKey,
     kind: "InterviewOccurred", jobTrackId: interview.jobTrackId,
-    subjectType: "interview", subjectId: interview.id, occurredAt, payload: {},
+    subjectType: "interview", subjectId: interview.id, occurredAt,
+    payload: { previousTiming: existing.timing, timing: interview.timing },
   });
   return { outcome: "interview_occurred", interview, event };
 }

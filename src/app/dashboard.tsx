@@ -524,7 +524,7 @@ function TaskRow({
   }
   return (
     <article className={`dashboard-task-row ${item.overdue ? "overdue" : ""}`}>
-      {completeAction && (item.sourceType === "task" || item.sourceType === "assessment" || item.sourceType === "interview_review") ? (
+      {completeAction && (item.sourceType === "task" || item.sourceType === "assessment" || item.sourceType === "interview_review" || (item.sourceType === "interview" && item.timeSource === "deadline")) ? (
         <button
           className="dashboard-complete"
           type="button"
