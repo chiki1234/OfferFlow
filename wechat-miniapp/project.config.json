@@ -1,0 +1,16 @@
+{
+  "description": "OfferFlow 微信小程序",
+  "projectname": "OfferFlow",
+  "appid": "touristappid",
+  "compileType": "miniprogram",
+  "miniprogramRoot": "miniprogram/",
+  "cloudfunctionRoot": "cloudfunctions/",
+  "setting": {
+    "es6": true,
+    "enhance": true,
+    "postcss": true,
+    "minified": true,
+    "urlCheck": true
+  },
+  "packOptions": { "ignore": [], "include": [] }
+}

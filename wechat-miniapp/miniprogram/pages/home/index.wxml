@@ -1,0 +1,81 @@
+<view class="app {{sheet || privacy ? 'locked' : ''}}">
+  <view class="topline">
+    <view class="brand"><view class="brand-mark"><view></view><view></view><view></view></view><text>OfferFlow</text></view>
+    <button class="icon-button account-icon" bindtap="settings" aria-label="我的资料"><view class="person-head"></view><view class="person-body"></view></button>
+  </view>
+
+  <view wx:if="{{loading}}" class="loading-state"><view class="skeleton hero-skeleton"></view><view class="skeleton row-skeleton"></view><view class="skeleton row-skeleton"></view><text class="muted">正在同步</text></view>
+  <view wx:elif="{{!loaded}}" class="connection-state"><view class="empty-orbit"><view class="orbit-dot"></view></view><view class="empty-title">{{error || '连接中'}}</view><button class="primary compact" bindtap="refresh">重新连接</button></view>
+  <block wx:else>
+    <button wx:if="{{error}}" class="connection-banner" bindtap="refresh">{{error}} · 重试</button>
+    <view wx:if="{{uploadRetry}}" class="upload-recovery"><button bindtap="retryUpload">文件待保存 · 重试</button><button bindtap="discardUpload">放弃</button></view>
+    <block wx:if="{{tab === 'today'}}">
+      <view class="heading"><view class="eyebrow">{{view.todayLabel}}</view><view class="page-title">每一步，向前。</view></view>
+      <view class="stats">
+        <button class="stat" data-tab="jobs" bindtap="switchTab"><text class="stat-value">{{view.activeCount}}<text class="stat-dot"></text></text><text class="stat-label">进行中</text></button>
+        <view class="stat"><text class="stat-value">{{view.todayCount}}</text><text class="stat-label">今日安排</text></view>
+        <view class="stat"><text class="stat-value">{{view.offerCount}}</text><text class="stat-label">已获 Offer</text></view>
+      </view>
+      <view wx:if="{{view.next}}" class="focus-card" data-id="{{view.next.id}}" bindtap="openAgenda" role="button" aria-label="查看下一场安排">
+        <view class="focus-top"><text class="focus-tag">下一步</text><text>{{view.next.dateText}} · {{view.next.time}}{{view.next.timing === 'deadline' ? ' 截止' : ''}}</text></view>
+        <view class="focus-company">{{view.next.company}}</view><view class="focus-title">{{view.next.title}}</view>
+        <view class="focus-bottom"><text>{{view.next.role || view.next.kindName}}</text><view class="arrow-circle">↗</view></view>
+        <view class="focus-ring ring-one"></view><view class="focus-ring ring-two"></view>
+      </view>
+      <view wx:else class="focus-card calm-card"><view class="focus-tag">留一点从容</view><view class="focus-company">下一站，新的可能。</view><button class="light-action" bindtap="addJob">添加岗位 <text>＋</text></button><view class="focus-ring ring-one"></view></view>
+
+      <view wx:if="{{view.reviews.length}}" class="review-strip"><view><text class="review-dot"></text><text>{{view.reviewCount}} 场面试待复盘</text></view><button class="text-button" data-id="{{view.reviews[0].id}}" bindtap="review">去复盘 ↗</button></view>
+      <view class="section-heading"><view class="section-title">日程</view><view class="calendar-controls"><button class="text-button small" bindtap="backToday">今天</button><picker mode="date" value="{{selectedDay}}" bindchange="pickDay"><view class="month-picker">{{view.monthLabel}}⌄</view></picker></view></view>
+      <view class="week-row"><button class="week-arrow" data-step="-1" bindtap="moveWeek" aria-label="上一周">‹</button><view class="week-days"><button wx:for="{{view.week}}" wx:key="key" class="day {{item.active ? 'selected' : ''}} {{item.today ? 'is-today' : ''}}" data-day="{{item.key}}" bindtap="chooseDay"><text class="day-label">{{item.label}}</text><text class="day-number">{{item.number}}</text><view class="day-dot {{item.dot ? 'has-dot' : ''}}"></view></button></view><button class="week-arrow" data-step="1" bindtap="moveWeek" aria-label="下一周">›</button></view>
+      <view class="agenda-list">
+        <view wx:for="{{view.dayAgenda}}" wx:key="id" class="agenda-row {{item.status === 'done' ? 'is-done' : ''}}">
+          <view class="agenda-time" data-id="{{item.id}}" bindtap="openAgenda"><text>{{item.time}}</text><text class="time-caption">{{item.timing === 'deadline' ? '截止' : item.endTime}}</text></view>
+          <view class="agenda-line kind-{{item.kind}}"></view>
+          <view class="agenda-content" data-id="{{item.id}}" bindtap="openAgenda"><view class="card-title">{{item.title}}</view><view class="card-meta">{{item.company}}<text wx:if="{{item.overdue}}" class="danger-text"> · 已逾期</text></view></view>
+          <button wx:if="{{item.status === 'pending'}}" class="check-button" data-id="{{item.id}}" bindtap="completeAgenda" disabled="{{saving}}" aria-label="完成日程"><view class="check-circle"></view></button>
+          <button wx:elif="{{item.needsReview}}" class="small-pill" data-id="{{item.id}}" bindtap="review">复盘</button>
+          <text wx:else class="completed-mark">✓</text>
+        </view>
+        <view wx:if="{{!view.dayAgenda.length}}" class="empty-inline"><text>这一天，留白。</text><button class="text-button" data-kind="task" bindtap="addAgenda">＋ 添加安排</button></view>
+      </view>
+      <block wx:if="{{view.overdue.length}}"><view class="section-heading"><view class="section-title">待处理 <text class="count">{{view.overdueCount}}</text></view></view><view class="surface"><view wx:for="{{view.overdue}}" wx:key="id" class="compact-row" data-id="{{item.id}}" bindtap="openAgenda"><view class="row-grow"><view class="card-title">{{item.title}}</view><view class="card-meta">{{item.company}} · {{item.dateText}}</view></view><text class="due-label">已逾期</text></view></view></block>
+    </block>
+
+    <block wx:elif="{{tab === 'jobs'}}">
+      <view class="heading row-heading"><view><view class="eyebrow">YOUR NEXT CHAPTER</view><view class="page-title">心动的下一站</view></view><button class="add-inline" bindtap="addJob" aria-label="添加岗位">＋</button></view>
+      <view class="search-box"><view class="search-icon"></view><input value="{{query}}" bindinput="search" placeholder="搜索公司、岗位" placeholder-class="placeholder" confirm-type="search" /></view>
+      <scroll-view scroll-x class="filter-scroll" enhanced show-scrollbar="{{false}}"><view class="filters"><button wx:for="{{filters}}" wx:key="id" class="filter {{filter === item.id ? 'active' : ''}}" data-id="{{item.id}}" bindtap="setFilter">{{item.name}}</button></view></scroll-view>
+      <view class="list-summary">{{view.jobCount}} 个岗位</view>
+      <view wx:for="{{view.filteredJobs}}" wx:key="id" class="job-card" data-id="{{item.id}}" bindtap="openJob" role="button">
+        <view class="job-top"><view class="company-avatar {{item.shade}}">{{item.initial}}</view><view class="row-grow"><view class="company-name">{{item.company}}</view><view class="job-role">{{item.role}}</view></view><button class="star-button {{item.starred ? 'starred' : ''}}" data-id="{{item.id}}" catchtap="starJob" aria-label="{{item.starred ? '取消收藏' : '收藏岗位'}}">{{item.starred ? '★' : '☆'}}</button></view>
+        <view class="job-chips"><text class="stage-chip stage-{{item.stage}}">{{item.stageName}}</text><text wx:if="{{item.city}}" class="subtle-chip">{{item.city}}</text><text wx:if="{{item.salary}}" class="salary">{{item.salary}}</text></view>
+        <view wx:if="{{item.next}}" class="job-next"><view class="tiny-dot"></view><text>{{item.next}}</text><text class="next-arrow">↗</text></view>
+      </view>
+      <view wx:if="{{!view.filteredJobs.length}}" class="empty-state"><view class="empty-orbit"><view class="orbit-dot"></view></view><view class="empty-title">{{query ? '没有找到相关岗位' : '下一次机会，从这里开始'}}</view><button wx:if="{{!query}}" class="primary compact" bindtap="addJob">添加岗位</button></view>
+    </block>
+
+    <block wx:elif="{{tab === 'library'}}">
+      <view class="heading"><view class="eyebrow">COLLECT &amp; GROW</view><view class="page-title">让经历有回响</view></view>
+      <view class="search-box"><view class="search-icon"></view><input value="{{query}}" bindinput="search" placeholder="搜索资料" placeholder-class="placeholder" confirm-type="search" /></view>
+      <view class="library-tabs"><button wx:for="{{libraryTabs}}" wx:key="id" class="library-tab {{libraryKind === item.id ? 'active' : ''}}" data-id="{{item.id}}" bindtap="setLibrary">{{item.name}}</button></view>
+      <view class="section-heading library-heading"><view class="muted">{{libraryKind === 'resume' ? view.resumeCount : view.noteCount}} 条资料</view><view class="library-actions"><button wx:if="{{libraryKind === 'question'}}" class="text-button" bindtap="importQuestions">导入</button><button wx:if="{{libraryKind === 'resume'}}" class="text-button" bindtap="uploadResume" disabled="{{saving}}">＋ 上传简历</button><button wx:else class="text-button" bindtap="addNote">＋ {{libraryKind === 'question' ? '记录问题' : '添加经历'}}</button></view></view>
+      <block wx:if="{{libraryKind !== 'resume'}}"><view wx:for="{{view.notes}}" wx:key="id" class="note-card" data-id="{{item.id}}" bindtap="openNote"><view class="note-top"><text class="note-tag">{{item.category || (item.kind === 'question' ? '面试问题' : '项目经历')}}</text><text class="note-date">{{item.dateText}}</text></view><view class="note-title">{{item.title}}</view><view wx:if="{{item.preview}}" class="note-preview">{{item.preview}}</view><view wx:if="{{item.company || item.experienceName}}" class="note-source">{{item.company}}{{item.company ? (item.experienceName ? ' · ' : '') : ''}}{{item.experienceName}}</view></view>
+        <view wx:if="{{!view.notes.length}}" class="empty-state"><view class="empty-orbit"><view class="orbit-dot"></view></view><view class="empty-title">{{query ? '没有找到相关资料' : libraryKind === 'question' ? '留下一个好问题' : '写下你的闪光时刻'}}</view><button wx:if="{{!query}}" class="primary compact" bindtap="addNote">{{libraryKind === 'question' ? '记录问题' : '添加经历'}}</button></view>
+      </block>
+      <block wx:else><view wx:for="{{view.resumes}}" wx:key="id" class="resume-card" data-id="{{item.id}}" bindtap="openResume"><view class="pdf-icon">PDF</view><view class="row-grow"><view class="card-title">{{item.name}}</view><view class="card-meta">{{item.sizeLabel}} · {{item.dateText}}</view></view><text class="muted">↗</text></view><view wx:if="{{!view.resumes.length}}" class="empty-state"><view class="empty-orbit"><view class="orbit-dot"></view></view><view class="empty-title">{{query ? '没有找到相关简历' : '每一个版本，都有准备'}}</view><button wx:if="{{!query}}" class="primary compact" bindtap="uploadResume">上传简历</button></view></block>
+    </block>
+    <button wx:if="{{view.hasMore}}" class="load-more" bindtap="loadMore">显示更多</button>
+    <view class="bottom-space"></view>
+    <button class="floating-add" bindtap="quickAdd" aria-label="快捷添加">＋</button>
+  </block>
+
+  <view class="bottom-nav">
+    <button class="nav-item {{tab === 'today' ? 'active' : ''}}" data-tab="today" bindtap="switchTab"><view class="nav-icon today-icon"><view></view></view><text>今日</text><view class="nav-dot"></view></button>
+    <button class="nav-item {{tab === 'jobs' ? 'active' : ''}}" data-tab="jobs" bindtap="switchTab"><view class="nav-icon jobs-icon"><view></view></view><text>求职</text><view class="nav-dot"></view></button>
+    <button class="nav-item {{tab === 'library' ? 'active' : ''}}" data-tab="library" bindtap="switchTab"><view class="nav-icon library-icon"><view></view></view><text>资料</text><view class="nav-dot"></view></button>
+  </view>
+</view>
+
+<include src="sheets.wxml" />
+
+<view wx:if="{{privacy}}" class="overlay privacy-overlay" catchtouchmove="noop"><view class="privacy-card"><view class="sheet-title">隐私保护</view><button class="privacy-link" bindtap="openPrivacy">《用户隐私保护指引》 ↗</button><button id="privacy-agree" class="primary" open-type="agreePrivacyAuthorization" bindagreeprivacyauthorization="agreePrivacy">同意并继续</button><button class="secondary" bindtap="rejectPrivacy">暂不</button></view></view>

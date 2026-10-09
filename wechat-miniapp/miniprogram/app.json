@@ -1,0 +1,15 @@
+{
+  "pages": ["pages/home/index"],
+  "window": {
+    "navigationBarTitleText": "OfferFlow",
+    "navigationBarBackgroundColor": "#f5f5f0",
+    "navigationBarTextStyle": "black",
+    "backgroundColor": "#f5f5f0",
+    "backgroundTextStyle": "dark",
+    "enablePullDownRefresh": true
+  },
+  "style": "v2",
+  "__usePrivacyCheck__": true,
+  "lazyCodeLoading": "requiredComponents",
+  "sitemapLocation": "sitemap.json"
+}

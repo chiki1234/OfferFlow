@@ -1,0 +1,7 @@
+{
+  "name": "offerflow-wechat",
+  "version": "1.0.0",
+  "private": true,
+  "type": "commonjs",
+  "description": "OfferFlow 微信小程序独立版本"
+}
